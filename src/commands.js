@@ -7,7 +7,7 @@ import { delay, Keyboard, Mouse, repeatAsync, KEY_TO_CODE } from './utils.js';
 import { Roam, RoamHighlight, copyBlockReference, copyBlockEmbed } from './roam.js';
 import { RoamBlock, VimRoamPanel } from './panel.js';
 import { Mode } from './mode.js';
-import { blurEverything, getHint } from './view.js';
+import { blurEverything, getHint, updateVimView } from './view.js';
 
 // ============== Internal State ==============
 export let yankRegister = '';
@@ -29,6 +29,7 @@ export const RoamVim = {
         const mode = getMode();
         if (mode === Mode.NORMAL) {
             VimRoamPanel.selected().selectRelativeBlock(blocksToJump);
+            updateVimView();
         }
         if (mode === Mode.VISUAL) {
             await repeatAsync(Math.abs(blocksToJump), () =>
@@ -55,18 +56,22 @@ export async function selectBlockDown() {
 
 export async function selectFirstVisibleBlock() {
     VimRoamPanel.selected().selectFirstVisibleBlock();
+    updateVimView();
 }
 
 export async function selectLastVisibleBlock() {
     VimRoamPanel.selected().selectLastVisibleBlock();
+    updateVimView();
 }
 
 export async function selectFirstBlock() {
     VimRoamPanel.selected().selectFirstBlock();
+    updateVimView();
 }
 
 export async function selectLastBlock() {
     VimRoamPanel.selected().selectLastBlock();
+    updateVimView();
 }
 
 export async function selectManyBlocksUp() {
@@ -79,10 +84,12 @@ export async function selectManyBlocksDown() {
 
 export async function scrollUp() {
     VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(-50);
+    updateVimView();
 }
 
 export async function scrollDown() {
     VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(50);
+    updateVimView();
 }
 
 // ============== Insert Commands ==============
@@ -110,10 +117,12 @@ export async function insertBlockBefore() {
 // ============== Panel Commands ==============
 export function selectPanelLeft() {
     VimRoamPanel.previousPanel().select();
+    updateVimView();
 }
 
 export function selectPanelRight() {
     VimRoamPanel.nextPanel().select();
+    updateVimView();
 }
 
 export function closeSidebarPage() {
