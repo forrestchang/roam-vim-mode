@@ -570,6 +570,7 @@ var VimRoamPanel = class _VimRoamPanel {
     this.selectBlock(this.relativeBlockId(block.id, blocksToJump));
   }
   selectFirstBlock() {
+    this.element.scrollTop = 0;
     this.selectBlock(this.firstBlock().id);
   }
   selectLastBlock() {

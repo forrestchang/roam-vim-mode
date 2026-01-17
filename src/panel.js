@@ -87,6 +87,7 @@ export class VimRoamPanel {
     }
 
     selectFirstBlock() {
+        this.element.scrollTop = 0;
         this.selectBlock(this.firstBlock().id);
     }
 
