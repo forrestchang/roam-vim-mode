@@ -92,6 +92,24 @@ export async function scrollDown() {
     updateVimView();
 }
 
+export async function centerCurrentBlock() {
+    const panel = VimRoamPanel.selected();
+    const block = panel.selectedBlock().element;
+
+    const panelRect = panel.element.getBoundingClientRect();
+    const blockRect = block.getBoundingClientRect();
+
+    // Calculate where the block's center is relative to the panel's visible area
+    const blockCenterRelativeToPanel = (blockRect.top + blockRect.height / 2) - panelRect.top;
+    const panelCenter = panelRect.height / 2;
+
+    // Calculate how much we need to scroll to center the block
+    const scrollAdjustment = blockCenterRelativeToPanel - panelCenter;
+    panel.element.scrollTop += scrollAdjustment;
+
+    updateVimView();
+}
+
 // ============== Insert Commands ==============
 export async function insertBlockAfter() {
     await Roam.activateBlock(RoamBlock.selected().element);

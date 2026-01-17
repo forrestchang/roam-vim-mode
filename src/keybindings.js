@@ -18,6 +18,7 @@ import {
     selectManyBlocksDown,
     scrollUp,
     scrollDown,
+    centerCurrentBlock,
     insertBlockAfter,
     editBlock,
     editBlockFromEnd,
@@ -203,8 +204,9 @@ function matchCommand(sequence, mode, event) {
         if (key === 'u' && !event.ctrlKey) return undo;
         if (key === 'r' && event.ctrlKey) return redo;
 
-        // Fold
-        if (key === 'z' && !event.ctrlKey && !event.metaKey) return toggleFold;
+        // Fold and viewport centering (z commands)
+        if (sequence === 'z z') return centerCurrentBlock;
+        if (sequence === 'z a') return toggleFold;
 
         // Help panel
         if (event.key === '?') return showHelpPanel;

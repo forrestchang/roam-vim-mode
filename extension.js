@@ -1031,6 +1031,17 @@ async function scrollDown() {
   VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(50);
   updateVimView();
 }
+async function centerCurrentBlock() {
+  const panel = VimRoamPanel.selected();
+  const block = panel.selectedBlock().element;
+  const panelRect = panel.element.getBoundingClientRect();
+  const blockRect = block.getBoundingClientRect();
+  const blockCenterRelativeToPanel = blockRect.top + blockRect.height / 2 - panelRect.top;
+  const panelCenter = panelRect.height / 2;
+  const scrollAdjustment = blockCenterRelativeToPanel - panelCenter;
+  panel.element.scrollTop += scrollAdjustment;
+  updateVimView();
+}
 async function insertBlockAfter() {
   await Roam.activateBlock(RoamBlock.selected().element);
   await Roam.createBlockBelow();
@@ -1329,7 +1340,9 @@ function matchCommand(sequence, mode, event) {
       return undo;
     if (key === "r" && event.ctrlKey)
       return redo;
-    if (key === "z" && !event.ctrlKey && !event.metaKey)
+    if (sequence === "z z")
+      return centerCurrentBlock;
+    if (sequence === "z a")
       return toggleFold;
     if (event.key === "?")
       return showHelpPanel;
