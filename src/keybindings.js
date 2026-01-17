@@ -69,11 +69,11 @@ export function handleKeydown(event) {
                 pageHintState.hints.forEach(hint => {
                     if (hint.label.startsWith(buffer)) {
                         hint.hintEl.style.display = '';
-                        const matched = buffer.toUpperCase();
-                        const remaining = hint.label.substring(buffer.length).toUpperCase();
+                        const matched = buffer;
+                        const remaining = hint.label.substring(buffer.length);
                         hint.hintEl.innerHTML = matched ?
                             `<span class="${PAGE_HINT_CSS_CLASS}--matched">${matched}</span>${remaining}` :
-                            hint.label.toUpperCase();
+                            hint.label;
                     } else {
                         hint.hintEl.style.display = 'none';
                     }
@@ -153,6 +153,8 @@ function matchCommand(sequence, mode, event) {
     const isNormal = mode === Mode.NORMAL;
     const isVisual = mode === Mode.VISUAL;
     const isNormalOrVisual = isNormal || isVisual;
+    // Check if we're in a multi-key sequence (has a space = multiple keys pressed)
+    const isInSequence = sequence.includes(' ');
 
     // Close help panel if open
     if (isHelpPanelOpen()) {
@@ -214,8 +216,9 @@ function matchCommand(sequence, mode, event) {
 
         // Page hints mode (Vimium-style)
         // f = direct navigation, F (shift+f) = open in sidebar
-        if (key === 'f' && !event.shiftKey && !event.ctrlKey) return () => enterPageHintMode(false);
-        if (key === 'f' && event.shiftKey && !event.ctrlKey) return () => enterPageHintMode(true);
+        // Only trigger if not in a multi-key sequence (e.g., 'g f' should not trigger)
+        if (key === 'f' && !event.shiftKey && !event.ctrlKey && !isInSequence) return () => enterPageHintMode(false);
+        if (key === 'f' && event.shiftKey && !event.ctrlKey && !isInSequence) return () => enterPageHintMode(true);
 
         // Hint keys (in normal mode only)
         for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {

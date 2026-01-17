@@ -745,7 +745,9 @@ var pageHintState = {
   hints: [],
   inputBuffer: "",
   scrollHandler: null,
-  openInSidebar: false
+  openInSidebar: false,
+  editBlock: false
+  // When true, hints target blocks for editing instead of links
 };
 function generateHintLabels(count) {
   const labels = [];
@@ -767,15 +769,29 @@ function generateHintLabels(count) {
 function getClickableElements() {
   const clickableSelectors = [
     Selectors.link,
-    Selectors.externalLink,
-    Selectors.checkbox,
-    Selectors.button,
-    Selectors.blockReference,
-    Selectors.hiddenSection,
-    Selectors.foldButton,
-    Selectors.pageReferenceLink
+    // .rm-page-ref - page references and tags
+    Selectors.blockReference
+    // .rm-block-ref - block references
   ];
   const elements = document.querySelectorAll(clickableSelectors.join(", "));
+  const externalLinks = document.querySelectorAll("a[href]");
+  const allElements = [...Array.from(elements)];
+  externalLinks.forEach((link) => {
+    if (link.classList.contains("bp3-button") || link.closest(".bp3-button") || link.classList.contains("bp3-menu-item") || link.closest(".bp3-popover") || link.closest(".rm-topbar") || link.closest(".roam-sidebar-container")) {
+      return;
+    }
+    if (link.classList.contains("rm-page-ref") || link.classList.contains("rm-block-ref")) {
+      return;
+    }
+    allElements.push(link);
+  });
+  return allElements.filter((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
+  });
+}
+function getBlockElements() {
+  const elements = document.querySelectorAll(Selectors.block);
   return Array.from(elements).filter((el) => {
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
@@ -805,10 +821,11 @@ function removeScrollListeners() {
     pageHintState.scrollHandler = null;
   }
 }
-function showPageHints(openInSidebar = false) {
+function showPageHints(options = {}) {
   hidePageHints();
-  pageHintState.openInSidebar = openInSidebar;
-  const elements = getClickableElements();
+  pageHintState.openInSidebar = options.openInSidebar || false;
+  pageHintState.editBlock = options.editBlock || false;
+  const elements = pageHintState.editBlock ? getBlockElements() : getClickableElements();
   const labels = generateHintLabels(elements.length);
   const overlay = document.createElement("div");
   overlay.id = PAGE_HINT_OVERLAY_ID;
@@ -821,7 +838,7 @@ function showPageHints(openInSidebar = false) {
     const label = labels[i];
     const hintEl = document.createElement("span");
     hintEl.className = PAGE_HINT_CSS_CLASS;
-    hintEl.textContent = label.toUpperCase();
+    hintEl.textContent = label;
     hintEl.dataset.label = label;
     hintEl.style.left = `${rect.left}px`;
     hintEl.style.top = `${rect.top}px`;
@@ -847,7 +864,7 @@ function filterPageHints(char) {
   const buffer = pageHintState.inputBuffer;
   const exactMatch = pageHintState.hints.find((h) => h.label === buffer);
   if (exactMatch) {
-    const clickOptions = pageHintState.openInSidebar ? { shiftKey: true } : {};
+    const clickOptions = pageHintState.editBlock ? {} : pageHintState.openInSidebar ? { shiftKey: true } : {};
     Mouse.leftClick(exactMatch.element, clickOptions);
     hidePageHints();
     return true;
@@ -856,8 +873,8 @@ function filterPageHints(char) {
   pageHintState.hints.forEach((hint) => {
     if (hint.label.startsWith(buffer)) {
       hint.hintEl.style.display = "";
-      const matched = buffer.toUpperCase();
-      const remaining = hint.label.substring(buffer.length).toUpperCase();
+      const matched = buffer;
+      const remaining = hint.label.substring(buffer.length);
       hint.hintEl.innerHTML = `<span class="${PAGE_HINT_CSS_CLASS}--matched">${matched}</span>${remaining}`;
       hasMatches = true;
     } else {
@@ -869,8 +886,14 @@ function filterPageHints(char) {
   }
   return hasMatches;
 }
-function enterPageHintMode(openInSidebar = false) {
-  showPageHints(openInSidebar);
+function enterPageHintMode(options = {}) {
+  if (typeof options === "boolean") {
+    options = { openInSidebar: options };
+  }
+  showPageHints(options);
+}
+function enterBlockHintMode() {
+  showPageHints({ editBlock: true });
 }
 
 // src/mode.js
@@ -940,7 +963,8 @@ var KEYBINDINGS = {
     { key: "Shift + hint", description: "Shift-click hint" },
     { key: "Ctrl+Shift + hint", description: "Open in sidebar" },
     { key: "f", description: "Show page-wide hints" },
-    { key: "F", description: "Open page hint in sidebar" }
+    { key: "F", description: "Open page hint in sidebar" },
+    { key: "gf", description: "Show block hints to edit" }
   ],
   "Other": [
     { key: "Esc", description: "Return to normal mode" },
@@ -1251,9 +1275,9 @@ function handleKeydown(event) {
         pageHintState.hints.forEach((hint) => {
           if (hint.label.startsWith(buffer)) {
             hint.hintEl.style.display = "";
-            const matched = buffer.toUpperCase();
-            const remaining = hint.label.substring(buffer.length).toUpperCase();
-            hint.hintEl.innerHTML = matched ? `<span class="${PAGE_HINT_CSS_CLASS}--matched">${matched}</span>${remaining}` : hint.label.toUpperCase();
+            const matched = buffer;
+            const remaining = hint.label.substring(buffer.length);
+            hint.hintEl.innerHTML = matched ? `<span class="${PAGE_HINT_CSS_CLASS}--matched">${matched}</span>${remaining}` : hint.label;
           } else {
             hint.hintEl.style.display = "none";
           }
@@ -1315,6 +1339,7 @@ function matchCommand(sequence, mode, event) {
   const isNormal = mode === Mode.NORMAL;
   const isVisual = mode === Mode.VISUAL;
   const isNormalOrVisual = isNormal || isVisual;
+  const isInSequence = sequence.includes(" ");
   if (isHelpPanelOpen()) {
     if (key === "escape" || event.key === "?") {
       return hideHelpPanel;
@@ -1336,6 +1361,8 @@ function matchCommand(sequence, mode, event) {
       return selectLastVisibleBlock;
     if (sequence === "g g")
       return selectFirstBlock;
+    if (sequence === "g f")
+      return enterBlockHintMode;
     if (key === "g" && event.shiftKey)
       return selectLastBlock;
     if (key === "u" && event.ctrlKey)
@@ -1378,9 +1405,9 @@ function matchCommand(sequence, mode, event) {
       return toggleFold;
     if (event.key === "?")
       return showHelpPanel;
-    if (key === "f" && !event.shiftKey && !event.ctrlKey)
+    if (key === "f" && !event.shiftKey && !event.ctrlKey && !isInSequence)
       return () => enterPageHintMode(false);
-    if (key === "f" && event.shiftKey && !event.ctrlKey)
+    if (key === "f" && event.shiftKey && !event.ctrlKey && !isInSequence)
       return () => enterPageHintMode(true);
     for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {
       if (key === DEFAULT_HINT_KEYS[i] && !event.shiftKey && !event.ctrlKey) {
