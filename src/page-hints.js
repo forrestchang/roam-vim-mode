@@ -46,12 +46,34 @@ function getClickableElements() {
     // Other elements like buttons, checkboxes, fold buttons are not supported
     const clickableSelectors = [
         Selectors.link,           // .rm-page-ref - page references and tags
-        Selectors.externalLink,   // a - external links
         Selectors.blockReference, // .rm-block-ref - block references
     ];
 
     const elements = document.querySelectorAll(clickableSelectors.join(', '));
-    return Array.from(elements).filter(el => {
+
+    // Also find external links - anchor elements with href that are not buttons
+    const externalLinks = document.querySelectorAll('a[href]');
+    const allElements = [...Array.from(elements)];
+
+    externalLinks.forEach(link => {
+        // Skip if it's a button or within a button
+        if (link.classList.contains('bp3-button') ||
+            link.closest('.bp3-button') ||
+            link.classList.contains('bp3-menu-item') ||
+            link.closest('.bp3-popover') ||
+            link.closest('.rm-topbar') ||
+            link.closest('.roam-sidebar-container')) {
+            return;
+        }
+        // Skip if it's already matched by other selectors (page refs, block refs)
+        if (link.classList.contains('rm-page-ref') ||
+            link.classList.contains('rm-block-ref')) {
+            return;
+        }
+        allElements.push(link);
+    });
+
+    return allElements.filter(el => {
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0 &&
                rect.top >= 0 && rect.left >= 0 &&
@@ -130,7 +152,7 @@ export function showPageHints(options = {}) {
 
         const hintEl = document.createElement('span');
         hintEl.className = PAGE_HINT_CSS_CLASS;
-        hintEl.textContent = label.toUpperCase();
+        hintEl.textContent = label;
         hintEl.dataset.label = label;
         hintEl.style.left = `${rect.left}px`;
         hintEl.style.top = `${rect.top}px`;
@@ -175,8 +197,8 @@ export function filterPageHints(char) {
     pageHintState.hints.forEach(hint => {
         if (hint.label.startsWith(buffer)) {
             hint.hintEl.style.display = '';
-            const matched = buffer.toUpperCase();
-            const remaining = hint.label.substring(buffer.length).toUpperCase();
+            const matched = buffer;
+            const remaining = hint.label.substring(buffer.length);
             hint.hintEl.innerHTML = `<span class="${PAGE_HINT_CSS_CLASS}--matched">${matched}</span>${remaining}`;
             hasMatches = true;
         } else {
