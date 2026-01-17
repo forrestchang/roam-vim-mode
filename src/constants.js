@@ -12,6 +12,9 @@ export const HELP_PANEL_ID = `${EXTENSION_ID}--help-panel`;
 export const PAGE_HINT_CSS_CLASS = `${EXTENSION_ID}--page-hint`;
 export const PAGE_HINT_OVERLAY_ID = `${EXTENSION_ID}--page-hint-overlay`;
 export const MODE_INDICATOR_ID = `${EXTENSION_ID}--mode-indicator`;
+export const SEARCH_INPUT_ID = `${EXTENSION_ID}--search-input`;
+export const SEARCH_HIGHLIGHT_CSS_CLASS = `${EXTENSION_ID}--search-highlight`;
+export const SEARCH_CURRENT_CSS_CLASS = `${EXTENSION_ID}--search-current`;
 
 export const Selectors = {
     link: '.rm-page-ref',

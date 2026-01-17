@@ -55,6 +55,11 @@ const KEYBINDINGS = {
         { key: 'F', description: 'Open page hint in sidebar' },
         { key: 'gf', description: 'Show block hints to edit' },
     ],
+    'Search': [
+        { key: '/', description: 'Search in visible blocks' },
+        { key: 'n', description: 'Go to next match' },
+        { key: 'N', description: 'Go to previous match' },
+    ],
     'Other': [
         { key: 'Esc', description: 'Return to normal mode' },
         { key: 'Ctrl+w', description: 'Close sidebar page' },
