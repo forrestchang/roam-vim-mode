@@ -45,7 +45,8 @@ A Roam Research extension that provides Vim-like keyboard navigation for blocks.
 |-----|-------------|
 | `o` | Insert block after |
 | `Shift+O` | Insert block before |
-| `z` | Toggle fold block |
+| `za` | Toggle fold block |
+| `zz` | Center current block |
 
 ### Clipboard (Normal/Visual Mode)
 
