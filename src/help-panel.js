@@ -47,10 +47,11 @@ const KEYBINDINGS = {
         { key: 'Cmd+Shift+j', description: 'Move block down' },
     ],
     'Hints (click links)': [
-        { key: 'q/w/e/r/t/f/b', description: 'Click hint in block' },
+        { key: 'q/w/e/r/t/b', description: 'Click hint in block' },
         { key: 'Shift + hint', description: 'Shift-click hint' },
         { key: 'Ctrl+Shift + hint', description: 'Open in sidebar' },
-        { key: 'F', description: 'Show page-wide hints' },
+        { key: 'f', description: 'Show page-wide hints' },
+        { key: 'F', description: 'Open page hint in sidebar' },
     ],
     'Other': [
         { key: 'Esc', description: 'Return to normal mode' },

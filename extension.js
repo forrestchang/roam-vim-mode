@@ -46,8 +46,8 @@ var Selectors = {
   commandBar: ".bp3-omnibar",
   escapeHtmlId: (htmlId) => htmlId.replace(".", "\\.").replace("@", "\\@")
 };
-var HINT_IDS = [0, 1, 2, 3, 4, 5, 6];
-var DEFAULT_HINT_KEYS = ["q", "w", "e", "r", "t", "f", "b"];
+var HINT_IDS = [0, 1, 2, 3, 4, 5];
+var DEFAULT_HINT_KEYS = ["q", "w", "e", "r", "t", "b"];
 var HINT_CHARS = "asdfghjkl";
 var SCROLL_PADDING = 50;
 
@@ -742,7 +742,9 @@ function getHint(n) {
 var pageHintState = {
   active: false,
   hints: [],
-  inputBuffer: ""
+  inputBuffer: "",
+  scrollHandler: null,
+  openInSidebar: false
 };
 function generateHintLabels(count) {
   const labels = [];
@@ -778,8 +780,33 @@ function getClickableElements() {
     return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
   });
 }
-function showPageHints() {
+function updateHintPositions() {
+  pageHintState.hints.forEach((hint) => {
+    const rect = hint.element.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth) {
+      hint.hintEl.style.left = `${rect.left}px`;
+      hint.hintEl.style.top = `${rect.top}px`;
+      hint.hintEl.style.visibility = "visible";
+    } else {
+      hint.hintEl.style.visibility = "hidden";
+    }
+  });
+}
+function addScrollListeners() {
+  pageHintState.scrollHandler = () => {
+    requestAnimationFrame(updateHintPositions);
+  };
+  window.addEventListener("scroll", pageHintState.scrollHandler, true);
+}
+function removeScrollListeners() {
+  if (pageHintState.scrollHandler) {
+    window.removeEventListener("scroll", pageHintState.scrollHandler, true);
+    pageHintState.scrollHandler = null;
+  }
+}
+function showPageHints(openInSidebar = false) {
   hidePageHints();
+  pageHintState.openInSidebar = openInSidebar;
   const elements = getClickableElements();
   const labels = generateHintLabels(elements.length);
   const overlay = document.createElement("div");
@@ -802,8 +829,10 @@ function showPageHints() {
   });
   pageHintState.active = true;
   pageHintState.inputBuffer = "";
+  addScrollListeners();
 }
 function hidePageHints() {
+  removeScrollListeners();
   const overlay = document.getElementById(PAGE_HINT_OVERLAY_ID);
   if (overlay) {
     overlay.remove();
@@ -817,7 +846,8 @@ function filterPageHints(char) {
   const buffer = pageHintState.inputBuffer;
   const exactMatch = pageHintState.hints.find((h) => h.label === buffer);
   if (exactMatch) {
-    Mouse.leftClick(exactMatch.element);
+    const clickOptions = pageHintState.openInSidebar ? { shiftKey: true } : {};
+    Mouse.leftClick(exactMatch.element, clickOptions);
     hidePageHints();
     return true;
   }
@@ -838,8 +868,8 @@ function filterPageHints(char) {
   }
   return hasMatches;
 }
-function enterPageHintMode() {
-  showPageHints();
+function enterPageHintMode(openInSidebar = false) {
+  showPageHints(openInSidebar);
 }
 
 // src/mode.js
@@ -905,10 +935,11 @@ var KEYBINDINGS = {
     { key: "Cmd+Shift+j", description: "Move block down" }
   ],
   "Hints (click links)": [
-    { key: "q/w/e/r/t/f/b", description: "Click hint in block" },
+    { key: "q/w/e/r/t/b", description: "Click hint in block" },
     { key: "Shift + hint", description: "Shift-click hint" },
     { key: "Ctrl+Shift + hint", description: "Open in sidebar" },
-    { key: "F", description: "Show page-wide hints" }
+    { key: "f", description: "Show page-wide hints" },
+    { key: "F", description: "Open page hint in sidebar" }
   ],
   "Other": [
     { key: "Esc", description: "Return to normal mode" },
@@ -1333,8 +1364,10 @@ function matchCommand(sequence, mode, event) {
       return toggleFold;
     if (event.key === "?")
       return showHelpPanel;
+    if (key === "f" && !event.shiftKey && !event.ctrlKey)
+      return () => enterPageHintMode(false);
     if (key === "f" && event.shiftKey && !event.ctrlKey)
-      return enterPageHintMode;
+      return () => enterPageHintMode(true);
     for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {
       if (key === DEFAULT_HINT_KEYS[i] && !event.shiftKey && !event.ctrlKey) {
         return () => clickHint(i);
@@ -1412,8 +1445,7 @@ var VIM_MODE_STYLES = `
 .${HINT_CSS_CLASS}2::after { content: "[e]"; }
 .${HINT_CSS_CLASS}3::after { content: "[r]"; }
 .${HINT_CSS_CLASS}4::after { content: "[t]"; }
-.${HINT_CSS_CLASS}5::after { content: "[f]"; }
-.${HINT_CSS_CLASS}6::after { content: "[b]"; }
+.${HINT_CSS_CLASS}5::after { content: "[b]"; }
 
 #${BLUR_PIXEL_ID} {
     position: fixed;
@@ -1561,9 +1593,9 @@ var VIM_MODE_STYLES = `
 .${PAGE_HINT_CSS_CLASS} {
     position: absolute;
     display: inline-block;
-    padding: 2px 5px;
+    padding: 1px 3px;
     font-family: monospace;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: bold;
     color: black;
     background: linear-gradient(to bottom, #FFF785 0%, #FFC542 100%);

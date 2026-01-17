@@ -209,8 +209,10 @@ function matchCommand(sequence, mode, event) {
         // Help panel
         if (event.key === '?') return showHelpPanel;
 
-        // Page hints mode (Vimium-style F command)
-        if (key === 'f' && event.shiftKey && !event.ctrlKey) return enterPageHintMode;
+        // Page hints mode (Vimium-style)
+        // f = direct navigation, F (shift+f) = open in sidebar
+        if (key === 'f' && !event.shiftKey && !event.ctrlKey) return () => enterPageHintMode(false);
+        if (key === 'f' && event.shiftKey && !event.ctrlKey) return () => enterPageHintMode(true);
 
         // Hint keys (in normal mode only)
         for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {

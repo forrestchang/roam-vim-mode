@@ -48,8 +48,7 @@ export const VIM_MODE_STYLES = `
 .${HINT_CSS_CLASS}2::after { content: "[e]"; }
 .${HINT_CSS_CLASS}3::after { content: "[r]"; }
 .${HINT_CSS_CLASS}4::after { content: "[t]"; }
-.${HINT_CSS_CLASS}5::after { content: "[f]"; }
-.${HINT_CSS_CLASS}6::after { content: "[b]"; }
+.${HINT_CSS_CLASS}5::after { content: "[b]"; }
 
 #${BLUR_PIXEL_ID} {
     position: fixed;
@@ -197,9 +196,9 @@ export const VIM_MODE_STYLES = `
 .${PAGE_HINT_CSS_CLASS} {
     position: absolute;
     display: inline-block;
-    padding: 2px 5px;
+    padding: 1px 3px;
     font-family: monospace;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: bold;
     color: black;
     background: linear-gradient(to bottom, #FFF785 0%, #FFC542 100%);

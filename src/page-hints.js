@@ -15,6 +15,8 @@ export const pageHintState = {
     active: false,
     hints: [],
     inputBuffer: '',
+    scrollHandler: null,
+    openInSidebar: false,
 };
 
 // ============== Hint Label Generation ==============
@@ -60,9 +62,45 @@ function getClickableElements() {
     });
 }
 
+// ============== Scroll Handling ==============
+function updateHintPositions() {
+    pageHintState.hints.forEach(hint => {
+        const rect = hint.element.getBoundingClientRect();
+        // Hide hints for elements that scrolled out of view
+        if (rect.width > 0 && rect.height > 0 &&
+            rect.top >= 0 && rect.left >= 0 &&
+            rect.bottom <= window.innerHeight &&
+            rect.right <= window.innerWidth) {
+            hint.hintEl.style.left = `${rect.left}px`;
+            hint.hintEl.style.top = `${rect.top}px`;
+            hint.hintEl.style.visibility = 'visible';
+        } else {
+            hint.hintEl.style.visibility = 'hidden';
+        }
+    });
+}
+
+function addScrollListeners() {
+    // Create scroll handler
+    pageHintState.scrollHandler = () => {
+        requestAnimationFrame(updateHintPositions);
+    };
+
+    // Listen on window and Roam's scrollable containers
+    window.addEventListener('scroll', pageHintState.scrollHandler, true);
+}
+
+function removeScrollListeners() {
+    if (pageHintState.scrollHandler) {
+        window.removeEventListener('scroll', pageHintState.scrollHandler, true);
+        pageHintState.scrollHandler = null;
+    }
+}
+
 // ============== Show/Hide Hints ==============
-export function showPageHints() {
+export function showPageHints(openInSidebar = false) {
     hidePageHints();
+    pageHintState.openInSidebar = openInSidebar;
 
     const elements = getClickableElements();
     const labels = generateHintLabels(elements.length);
@@ -91,9 +129,11 @@ export function showPageHints() {
 
     pageHintState.active = true;
     pageHintState.inputBuffer = '';
+    addScrollListeners();
 }
 
 export function hidePageHints() {
+    removeScrollListeners();
     const overlay = document.getElementById(PAGE_HINT_OVERLAY_ID);
     if (overlay) {
         overlay.remove();
@@ -110,7 +150,8 @@ export function filterPageHints(char) {
 
     const exactMatch = pageHintState.hints.find(h => h.label === buffer);
     if (exactMatch) {
-        Mouse.leftClick(exactMatch.element);
+        const clickOptions = pageHintState.openInSidebar ? { shiftKey: true } : {};
+        Mouse.leftClick(exactMatch.element, clickOptions);
         hidePageHints();
         return true;
     }
@@ -135,6 +176,6 @@ export function filterPageHints(char) {
     return hasMatches;
 }
 
-export function enterPageHintMode() {
-    showPageHints();
+export function enterPageHintMode(openInSidebar = false) {
+    showPageHints(openInSidebar);
 }

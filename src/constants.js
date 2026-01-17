@@ -52,7 +52,7 @@ export const Selectors = {
 };
 
 // Hint configuration
-export const HINT_IDS = [0, 1, 2, 3, 4, 5, 6];
-export const DEFAULT_HINT_KEYS = ['q', 'w', 'e', 'r', 't', 'f', 'b'];
+export const HINT_IDS = [0, 1, 2, 3, 4, 5];
+export const DEFAULT_HINT_KEYS = ['q', 'w', 'e', 'r', 't', 'b'];
 export const HINT_CHARS = 'asdfghjkl';
 export const SCROLL_PADDING = 50;
