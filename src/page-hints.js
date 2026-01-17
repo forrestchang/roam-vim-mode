@@ -17,6 +17,7 @@ export const pageHintState = {
     inputBuffer: '',
     scrollHandler: null,
     openInSidebar: false,
+    editBlock: false, // When true, hints target blocks for editing instead of links
 };
 
 // ============== Hint Label Generation ==============
@@ -41,18 +42,28 @@ export function generateHintLabels(count) {
 
 // ============== Clickable Elements ==============
 function getClickableElements() {
+    // Only target content links: page references, external links, block references, tags
+    // Other elements like buttons, checkboxes, fold buttons are not supported
     const clickableSelectors = [
-        Selectors.link,
-        Selectors.externalLink,
-        Selectors.checkbox,
-        Selectors.button,
-        Selectors.blockReference,
-        Selectors.hiddenSection,
-        Selectors.foldButton,
-        Selectors.pageReferenceLink,
+        Selectors.link,           // .rm-page-ref - page references and tags
+        Selectors.externalLink,   // a - external links
+        Selectors.blockReference, // .rm-block-ref - block references
     ];
 
     const elements = document.querySelectorAll(clickableSelectors.join(', '));
+    return Array.from(elements).filter(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 &&
+               rect.top >= 0 && rect.left >= 0 &&
+               rect.bottom <= window.innerHeight &&
+               rect.right <= window.innerWidth;
+    });
+}
+
+// ============== Block Elements ==============
+function getBlockElements() {
+    // Target all visible blocks for editing
+    const elements = document.querySelectorAll(Selectors.block);
     return Array.from(elements).filter(el => {
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0 &&
@@ -98,11 +109,12 @@ function removeScrollListeners() {
 }
 
 // ============== Show/Hide Hints ==============
-export function showPageHints(openInSidebar = false) {
+export function showPageHints(options = {}) {
     hidePageHints();
-    pageHintState.openInSidebar = openInSidebar;
+    pageHintState.openInSidebar = options.openInSidebar || false;
+    pageHintState.editBlock = options.editBlock || false;
 
-    const elements = getClickableElements();
+    const elements = pageHintState.editBlock ? getBlockElements() : getClickableElements();
     const labels = generateHintLabels(elements.length);
 
     const overlay = document.createElement('div');
@@ -150,7 +162,10 @@ export function filterPageHints(char) {
 
     const exactMatch = pageHintState.hints.find(h => h.label === buffer);
     if (exactMatch) {
-        const clickOptions = pageHintState.openInSidebar ? { shiftKey: true } : {};
+        // For block editing, just click to enter edit mode
+        // For links, optionally shift-click to open in sidebar
+        const clickOptions = pageHintState.editBlock ? {} :
+            (pageHintState.openInSidebar ? { shiftKey: true } : {});
         Mouse.leftClick(exactMatch.element, clickOptions);
         hidePageHints();
         return true;
@@ -176,6 +191,14 @@ export function filterPageHints(char) {
     return hasMatches;
 }
 
-export function enterPageHintMode(openInSidebar = false) {
-    showPageHints(openInSidebar);
+export function enterPageHintMode(options = {}) {
+    // Support legacy boolean argument for openInSidebar
+    if (typeof options === 'boolean') {
+        options = { openInSidebar: options };
+    }
+    showPageHints(options);
+}
+
+export function enterBlockHintMode() {
+    showPageHints({ editBlock: true });
 }

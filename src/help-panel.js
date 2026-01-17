@@ -52,6 +52,7 @@ const KEYBINDINGS = {
         { key: 'Ctrl+Shift + hint', description: 'Open in sidebar' },
         { key: 'f', description: 'Show page-wide hints' },
         { key: 'F', description: 'Open page hint in sidebar' },
+        { key: 'gf', description: 'Show block hints to edit' },
     ],
     'Other': [
         { key: 'Esc', description: 'Return to normal mode' },

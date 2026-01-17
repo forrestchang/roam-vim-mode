@@ -4,7 +4,7 @@
 
 import { DEFAULT_HINT_KEYS, HINT_CHARS, PAGE_HINT_CSS_CLASS, Selectors } from './constants.js';
 import { Mode, getMode } from './mode.js';
-import { pageHintState, hidePageHints, filterPageHints, enterPageHintMode } from './page-hints.js';
+import { pageHintState, hidePageHints, filterPageHints, enterPageHintMode, enterBlockHintMode } from './page-hints.js';
 import { showHelpPanel, hideHelpPanel, isHelpPanelOpen } from './help-panel.js';
 import {
     returnToNormalMode,
@@ -175,6 +175,7 @@ function matchCommand(sequence, mode, event) {
         if (key === 'h' && event.shiftKey) return selectFirstVisibleBlock;
         if (key === 'l' && event.shiftKey) return selectLastVisibleBlock;
         if (sequence === 'g g') return selectFirstBlock;
+        if (sequence === 'g f') return enterBlockHintMode;
         if (key === 'g' && event.shiftKey) return selectLastBlock;
         if (key === 'u' && event.ctrlKey) return selectManyBlocksUp;
         if (key === 'd' && event.ctrlKey) return selectManyBlocksDown;
