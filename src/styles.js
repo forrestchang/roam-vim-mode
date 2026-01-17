@@ -12,6 +12,9 @@ import {
     PAGE_HINT_CSS_CLASS,
     PAGE_HINT_OVERLAY_ID,
     WHICH_KEY_PANEL_ID,
+    SEARCH_INPUT_ID,
+    SEARCH_HIGHLIGHT_CSS_CLASS,
+    SEARCH_CURRENT_CSS_CLASS,
 } from './constants.js';
 
 export const VIM_MODE_STYLES = `
@@ -308,5 +311,54 @@ export const VIM_MODE_STYLES = `
 
 .bp3-dark .${WHICH_KEY_PANEL_ID}--group {
     color: #ce93d8;
+}
+
+/* Search */
+#${SEARCH_INPUT_ID} {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 14px;
+    background: #f6f8fa;
+    border: none;
+    border-top: 1px solid #e1e4e8;
+    outline: none;
+    z-index: 20000;
+    box-sizing: border-box;
+}
+
+#${SEARCH_INPUT_ID}::placeholder {
+    color: #6a737d;
+}
+
+.bp3-dark #${SEARCH_INPUT_ID} {
+    background: #30404d;
+    border-top-color: #5c7080;
+    color: #f5f8fa;
+}
+
+.bp3-dark #${SEARCH_INPUT_ID}::placeholder {
+    color: #a7b6c2;
+}
+
+.${SEARCH_HIGHLIGHT_CSS_CLASS} {
+    background-color: #fff59d;
+    border-radius: 2px;
+}
+
+.bp3-dark .${SEARCH_HIGHLIGHT_CSS_CLASS} {
+    background-color: #5c6b3a;
+}
+
+.${SEARCH_CURRENT_CSS_CLASS} {
+    background-color: #ff9800;
+    border-radius: 2px;
+}
+
+.bp3-dark .${SEARCH_CURRENT_CSS_CLASS} {
+    background-color: #e65100;
 }
 `;

@@ -68,6 +68,11 @@ const KEYBINDINGS = {
         { key: 'SPC s s', description: 'Search' },
         { key: 'SPC t f', description: 'Toggle fold' },
     ],
+    'Search': [
+        { key: '/', description: 'Search in visible blocks' },
+        { key: 'n', description: 'Go to next match' },
+        { key: 'N', description: 'Go to previous match' },
+    ],
     'Other': [
         { key: 'Esc', description: 'Return to normal mode' },
         { key: 'Ctrl+w', description: 'Close sidebar page' },

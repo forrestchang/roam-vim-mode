@@ -8,6 +8,7 @@ import { pageHintState, hidePageHints, filterPageHints, enterPageHintMode, enter
 import { showHelpPanel, hideHelpPanel, isHelpPanelOpen } from './help-panel.js';
 import { showWhichKey, showWhichKeyImmediate, hideWhichKey } from './which-key.js';
 import { DEFAULT_LEADER_CONFIG, LEADER_COMMAND_REGISTRY } from './leader-config.js';
+import { enterSearchMode, exitSearchMode, handleSearchInput, nextMatch, previousMatch } from './search.js';
 import {
     returnToNormalMode,
     selectBlockUp,
@@ -132,6 +133,18 @@ export function handleKeydown(event) {
     const mode = getMode();
     const key = event.key.toLowerCase();
     const hasModifier = event.ctrlKey || event.metaKey || event.altKey;
+
+    // Handle search mode specially
+    if (mode === Mode.SEARCH) {
+        // Only intercept escape and enter for search mode control
+        if (key === 'escape' || key === 'enter') {
+            event.preventDefault();
+            event.stopPropagation();
+            handleSearchInput(event);
+        }
+        // Let other keys pass through to the search input
+        return;
+    }
 
     // Handle hint mode specially
     if (mode === Mode.HINT) {
@@ -322,6 +335,11 @@ function matchCommand(sequence, mode, event) {
 
         // Help panel
         if (event.key === '?') return showHelpPanel;
+
+        // Search
+        if (event.key === '/') return enterSearchMode;
+        if (key === 'n' && !event.shiftKey && !event.ctrlKey) return nextMatch;
+        if (key === 'n' && event.shiftKey && !event.ctrlKey) return previousMatch;
 
         // Page hints mode (Vimium-style)
         // f = direct navigation, F (shift+f) = open in sidebar
