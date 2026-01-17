@@ -939,7 +939,8 @@ var KEYBINDINGS = {
     { key: "O", description: "Insert block above" },
     { key: "u", description: "Undo" },
     { key: "Ctrl+r", description: "Redo" },
-    { key: "z", description: "Toggle fold" }
+    { key: "za", description: "Toggle fold" },
+    { key: "zz", description: "Center current block" }
   ],
   "Visual Mode": [
     { key: "v", description: "Enter visual mode" },
@@ -1259,6 +1260,7 @@ function toggleFold() {
 // src/keybindings.js
 var sequenceBuffer = "";
 var sequenceTimeout = null;
+var SEQUENCE_PREFIXES = ["g", "z"];
 function handleKeydown(event) {
   const mode = getMode();
   const key = event.key.toLowerCase();
@@ -1339,7 +1341,7 @@ function matchCommand(sequence, mode, event) {
   const isNormal = mode === Mode.NORMAL;
   const isVisual = mode === Mode.VISUAL;
   const isNormalOrVisual = isNormal || isVisual;
-  const isInSequence = sequence.includes(" ");
+  const sequencePrefix = SEQUENCE_PREFIXES.find((p) => sequence.startsWith(p + " "));
   if (isHelpPanelOpen()) {
     if (key === "escape" || event.key === "?") {
       return hideHelpPanel;
@@ -1351,6 +1353,18 @@ function matchCommand(sequence, mode, event) {
     return returnToNormalMode;
   }
   if (isNormal) {
+    if (sequence === "g g")
+      return selectFirstBlock;
+    if (sequence === "g f")
+      return enterBlockHintMode;
+    if (sequence === "z z")
+      return centerCurrentBlock;
+    if (sequence === "z a")
+      return toggleFold;
+    if (sequencePrefix) {
+      return () => {
+      };
+    }
     if (key === "k" && !event.shiftKey && !event.ctrlKey)
       return selectBlockUp;
     if (key === "j" && !event.shiftKey && !event.ctrlKey)
@@ -1359,10 +1373,6 @@ function matchCommand(sequence, mode, event) {
       return selectFirstVisibleBlock;
     if (key === "l" && event.shiftKey)
       return selectLastVisibleBlock;
-    if (sequence === "g g")
-      return selectFirstBlock;
-    if (sequence === "g f")
-      return enterBlockHintMode;
     if (key === "g" && event.shiftKey)
       return selectLastBlock;
     if (key === "u" && event.ctrlKey)
@@ -1399,15 +1409,11 @@ function matchCommand(sequence, mode, event) {
       return undo;
     if (key === "r" && event.ctrlKey)
       return redo;
-    if (sequence === "z z")
-      return centerCurrentBlock;
-    if (sequence === "z a")
-      return toggleFold;
     if (event.key === "?")
       return showHelpPanel;
-    if (key === "f" && !event.shiftKey && !event.ctrlKey && !isInSequence)
+    if (key === "f" && !event.shiftKey && !event.ctrlKey)
       return () => enterPageHintMode(false);
-    if (key === "f" && event.shiftKey && !event.ctrlKey && !isInSequence)
+    if (key === "f" && event.shiftKey && !event.ctrlKey)
       return () => enterPageHintMode(true);
     for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {
       if (key === DEFAULT_HINT_KEYS[i] && !event.shiftKey && !event.ctrlKey) {
