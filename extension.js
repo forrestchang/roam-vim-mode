@@ -1190,18 +1190,58 @@ var KEYBINDINGS = {
     { key: "F", description: "Open page hint in sidebar" },
     { key: "gf", description: "Show block hints to edit" }
   ],
-  "Leader Key (SPC)": [
-    { key: "SPC", description: "Show leader menu" },
+  "Leader Key (SPC) - Block": [
     { key: "SPC b y", description: "Copy block" },
     { key: "SPC b r", description: "Copy block reference" },
     { key: "SPC b e", description: "Copy block embed" },
     { key: "SPC b p/P", description: "Paste after/before" },
-    { key: "SPC w h/l", description: "Panel left/right" },
-    { key: "SPC w d", description: "Close sidebar" },
+    { key: "SPC b d", description: "Delete block" },
+    { key: "SPC b x", description: "Cut block" },
+    { key: "SPC b n/N", description: "New block below/above" },
+    { key: "SPC b o", description: "Open block in sidebar" },
+    { key: "SPC b m", description: "Show block mentions" },
+    { key: "SPC b z", description: "Zoom into block" }
+  ],
+  "Leader Key (SPC) - Goto": [
     { key: "SPC g g/G", description: "First/Last block" },
-    { key: "SPC g d", description: "Daily Notes" },
-    { key: "SPC s s", description: "Search" },
-    { key: "SPC t f", description: "Toggle fold" }
+    { key: "SPC g d/h", description: "Daily Notes / Home" },
+    { key: "SPC g p", description: "Go to page..." },
+    { key: "SPC g b", description: "Go to block..." },
+    { key: "SPC g l", description: "Go to linked refs" }
+  ],
+  "Leader Key (SPC) - Window": [
+    { key: "SPC w h/l", description: "Panel left/right" },
+    { key: "SPC w o/c", description: "Open/Close right sidebar" },
+    { key: "SPC w d", description: "Close sidebar page" },
+    { key: "SPC w L", description: "Toggle left sidebar" },
+    { key: "SPC w a", description: "Add block to sidebar" },
+    { key: "SPC w m", description: "Add mentions to sidebar" },
+    { key: "SPC w g", description: "Add graph to sidebar" },
+    { key: "SPC w s", description: "Search in sidebar" }
+  ],
+  "Leader Key (SPC) - Search": [
+    { key: "SPC s s", description: "Command palette" },
+    { key: "SPC s p", description: "Find page" },
+    { key: "SPC s /", description: "Browser find (Cmd+F)" },
+    { key: "SPC s r", description: "Search in sidebar" },
+    { key: "SPC s g", description: "Graph search" }
+  ],
+  "Leader Key (SPC) - Page": [
+    { key: "SPC p n", description: "New page" },
+    { key: "SPC p d", description: "Delete page" },
+    { key: "SPC p r", description: "Rename page" },
+    { key: "SPC p o", description: "Open page in sidebar" },
+    { key: "SPC p m", description: "Show page mentions" },
+    { key: "SPC p g", description: "Show page graph" }
+  ],
+  "Leader Key (SPC) - Other": [
+    { key: "SPC t f", description: "Toggle fold" },
+    { key: "SPC t l/r", description: "Toggle left/right sidebar" },
+    { key: "SPC f f", description: "Focus first block" },
+    { key: "SPC f b", description: "Focus current block" },
+    { key: "SPC u", description: "Undo" },
+    { key: "SPC r", description: "Redo" },
+    { key: "SPC ?", description: "Help" }
   ],
   "Search": [
     { key: "/", description: "Search in visible blocks" },
@@ -1575,9 +1615,27 @@ function toggleFold() {
 }
 
 // src/leader-config.js
+function getSelectedBlockUid() {
+  const panel = VimRoamPanel.selected();
+  if (!panel)
+    return null;
+  const block = panel.selectedBlock();
+  return block?.id || null;
+}
+function getCurrentPageUid() {
+  if (window.roamAlphaAPI?.ui?.mainWindow?.getOpenPageOrBlockUid) {
+    return window.roamAlphaAPI.ui.mainWindow.getOpenPageOrBlockUid();
+  }
+  const match = window.location.hash.match(/\/page\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+}
+function promptUser(message, defaultValue = "") {
+  return window.prompt(message, defaultValue);
+}
 var DEFAULT_LEADER_CONFIG = {
   name: "+leader",
   keys: {
+    // Block operations
     "b": {
       name: "+block",
       keys: {
@@ -1586,70 +1644,286 @@ var DEFAULT_LEADER_CONFIG = {
         "e": { name: "Copy embed", command: "copyBlockEmbed" },
         "p": { name: "Paste after", command: "paste" },
         "P": { name: "Paste before", command: "pasteBefore" },
-        "d": { name: "Cut/Delete", command: "cutBlock" }
+        "d": { name: "Delete block", command: "deleteBlock" },
+        "x": { name: "Cut block", command: "cutBlock" },
+        "n": { name: "New block below", command: "createBlockBelow" },
+        "N": { name: "New block above", command: "createBlockAbove" },
+        "o": { name: "Open in sidebar", command: "openBlockInSidebar" },
+        "m": { name: "Show mentions", command: "showBlockMentions" },
+        "z": { name: "Zoom into block", command: "zoomIntoBlock" }
       }
     },
-    "w": {
-      name: "+window",
-      keys: {
-        "h": { name: "Panel left", command: "selectPanelLeft" },
-        "l": { name: "Panel right", command: "selectPanelRight" },
-        "d": { name: "Close sidebar", command: "closeSidebarPage" }
-      }
-    },
+    // Goto/Navigation
     "g": {
       name: "+goto",
       keys: {
         "g": { name: "First block", command: "selectFirstBlock" },
         "G": { name: "Last block", command: "selectLastBlock" },
-        "d": { name: "Daily Notes", command: "gotoDailyNotes" }
+        "d": { name: "Daily Notes", command: "gotoDailyNotes" },
+        "p": { name: "Go to page...", command: "gotoPage" },
+        "b": { name: "Go to block...", command: "gotoBlock" },
+        "h": { name: "Go home (Daily Notes)", command: "gotoDailyNotes" },
+        "l": { name: "Go to linked refs", command: "gotoLinkedRefs" }
       }
     },
+    // Window/Panel operations
+    "w": {
+      name: "+window",
+      keys: {
+        "h": { name: "Panel left", command: "selectPanelLeft" },
+        "l": { name: "Panel right", command: "selectPanelRight" },
+        "o": { name: "Open right sidebar", command: "openRightSidebar" },
+        "c": { name: "Close right sidebar", command: "closeRightSidebar" },
+        "d": { name: "Close sidebar page", command: "closeSidebarPage" },
+        "L": { name: "Toggle left sidebar", command: "toggleLeftSidebar" },
+        "a": { name: "Add block to sidebar", command: "openBlockInSidebar" },
+        "m": { name: "Add mentions to sidebar", command: "showBlockMentions" },
+        "g": { name: "Add graph to sidebar", command: "showGraphInSidebar" },
+        "s": { name: "Search in sidebar", command: "searchInSidebar" }
+      }
+    },
+    // Search operations
     "s": {
       name: "+search",
       keys: {
-        "s": { name: "Search", command: "openSearch" }
+        "s": { name: "Command palette", command: "openCommandPalette" },
+        "p": { name: "Find page", command: "openSearch" },
+        "/": { name: "Search in page", command: "searchInPage" },
+        "r": { name: "Search in sidebar", command: "searchInSidebar" },
+        "g": { name: "Graph search", command: "graphSearch" }
       }
     },
+    // Page operations
+    "p": {
+      name: "+page",
+      keys: {
+        "n": { name: "New page", command: "createPage" },
+        "d": { name: "Delete page", command: "deletePage" },
+        "r": { name: "Rename page", command: "renamePage" },
+        "o": { name: "Open in sidebar", command: "openPageInSidebar" },
+        "m": { name: "Show mentions", command: "showPageMentions" },
+        "g": { name: "Show graph", command: "showPageGraph" }
+      }
+    },
+    // Toggle operations
     "t": {
       name: "+toggle",
       keys: {
-        "f": { name: "Fold", command: "toggleFold" }
+        "f": { name: "Fold/Unfold", command: "toggleFold" },
+        "l": { name: "Left sidebar", command: "toggleLeftSidebar" },
+        "r": { name: "Right sidebar", command: "toggleRightSidebar" }
       }
     },
+    // Focus operations
+    "f": {
+      name: "+focus",
+      keys: {
+        "f": { name: "Focus first block", command: "focusFirstBlock" },
+        "b": { name: "Focus current block", command: "focusCurrentBlock" }
+      }
+    },
+    // History - single key commands
     "u": { name: "Undo", command: "undo" },
     "r": { name: "Redo", command: "redo" },
+    // Help
     "?": { name: "Help", command: "showHelpPanel" }
   }
 };
 var LEADER_COMMAND_REGISTRY = {
-  // Block operations
+  // ==================== Block Operations ====================
   copyBlock: () => copySelectedBlock(Mode.NORMAL),
   copyBlockReference: copySelectedBlockReference,
   copyBlockEmbed: copySelectedBlockEmbed,
   paste,
   pasteBefore,
   cutBlock: () => enterOrCutInVisualMode(Mode.VISUAL),
-  // Panel/Window operations
-  selectPanelLeft,
-  selectPanelRight,
-  closeSidebarPage,
-  // Navigation
-  selectFirstBlock,
-  selectLastBlock,
-  gotoDailyNotes: () => {
-    const dailyNotesLink = document.querySelector(".rm-topbar .bp3-icon-calendar");
-    if (dailyNotesLink) {
-      dailyNotesLink.click();
+  deleteBlock: () => {
+    const uid = getSelectedBlockUid();
+    if (!uid) {
+      console.warn("[Vim Mode] No block selected");
+      return;
+    }
+    if (window.roamAlphaAPI?.data?.block?.delete) {
+      window.roamAlphaAPI.data.block.delete({ block: { uid } });
     } else {
-      if (window.roamAlphaAPI?.ui?.mainWindow?.openDailyNotes) {
-        window.roamAlphaAPI.ui.mainWindow.openDailyNotes();
-      } else {
-        window.location.hash = "";
+      enterOrCutInVisualMode(Mode.VISUAL);
+    }
+  },
+  createBlockBelow: () => {
+    const uid = getSelectedBlockUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.data?.block?.create) {
+      const blockInfo = window.roamAlphaAPI.data.pull("[{:block/parents [:block/uid :block/order]}]", [":block/uid", uid]);
+      if (blockInfo) {
+        const parentUid = blockInfo[":block/parents"]?.[0]?.[":block/uid"];
+        if (parentUid) {
+          window.roamAlphaAPI.data.block.create({
+            location: { "parent-uid": parentUid, order: "last" },
+            block: { string: "" }
+          }).then(() => {
+            window.roamAlphaAPI.ui.mainWindow.focusFirstBlock?.();
+          });
+        }
       }
     }
   },
-  // Search
+  createBlockAbove: () => {
+    const uid = getSelectedBlockUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.data?.block?.create) {
+      const blockInfo = window.roamAlphaAPI.data.pull("[{:block/parents [:block/uid]} :block/order]", [":block/uid", uid]);
+      if (blockInfo) {
+        const parentUid = blockInfo[":block/parents"]?.[0]?.[":block/uid"];
+        const order = blockInfo[":block/order"] || 0;
+        if (parentUid) {
+          window.roamAlphaAPI.data.block.create({
+            location: { "parent-uid": parentUid, order },
+            block: { string: "" }
+          });
+        }
+      }
+    }
+  },
+  openBlockInSidebar: () => {
+    const uid = getSelectedBlockUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
+      window.roamAlphaAPI.ui.rightSidebar.addWindow({
+        window: { type: "block", "block-uid": uid }
+      });
+    }
+  },
+  showBlockMentions: () => {
+    const uid = getSelectedBlockUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
+      window.roamAlphaAPI.ui.rightSidebar.addWindow({
+        window: { type: "mentions", "block-uid": uid }
+      });
+    }
+  },
+  zoomIntoBlock: () => {
+    const uid = getSelectedBlockUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.mainWindow?.openBlock) {
+      window.roamAlphaAPI.ui.mainWindow.openBlock({ block: { uid } });
+    }
+  },
+  // ==================== Navigation ====================
+  selectFirstBlock,
+  selectLastBlock,
+  gotoDailyNotes: () => {
+    if (window.roamAlphaAPI?.ui?.mainWindow?.openDailyNotes) {
+      window.roamAlphaAPI.ui.mainWindow.openDailyNotes();
+    } else {
+      const dailyNotesLink = document.querySelector(".rm-topbar .bp3-icon-calendar");
+      if (dailyNotesLink) {
+        dailyNotesLink.click();
+      }
+    }
+  },
+  gotoPage: () => {
+    const title = promptUser("Enter page title:");
+    if (!title)
+      return;
+    if (window.roamAlphaAPI?.ui?.mainWindow?.openPage) {
+      window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title } });
+    }
+  },
+  gotoBlock: () => {
+    const uid = promptUser("Enter block UID:");
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.mainWindow?.openBlock) {
+      window.roamAlphaAPI.ui.mainWindow.openBlock({ block: { uid } });
+    }
+  },
+  gotoLinkedRefs: () => {
+    const linkedRefs = document.querySelector(".rm-reference-main");
+    if (linkedRefs) {
+      linkedRefs.scrollIntoView({ behavior: "smooth" });
+    }
+  },
+  // ==================== Window/Panel Operations ====================
+  selectPanelLeft,
+  selectPanelRight,
+  closeSidebarPage,
+  openRightSidebar: () => {
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.open) {
+      window.roamAlphaAPI.ui.rightSidebar.open();
+    }
+  },
+  closeRightSidebar: () => {
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.close) {
+      window.roamAlphaAPI.ui.rightSidebar.close();
+    }
+  },
+  toggleLeftSidebar: () => {
+    const leftSidebar = document.querySelector(".roam-sidebar-container");
+    const isOpen = leftSidebar && !leftSidebar.classList.contains("rm-sidebar-closed");
+    if (isOpen) {
+      if (window.roamAlphaAPI?.ui?.leftSidebar?.close) {
+        window.roamAlphaAPI.ui.leftSidebar.close();
+      }
+    } else {
+      if (window.roamAlphaAPI?.ui?.leftSidebar?.open) {
+        window.roamAlphaAPI.ui.leftSidebar.open();
+      }
+    }
+  },
+  toggleRightSidebar: () => {
+    const rightSidebar = document.getElementById("right-sidebar");
+    const isOpen = rightSidebar && rightSidebar.classList.contains("open");
+    if (isOpen) {
+      if (window.roamAlphaAPI?.ui?.rightSidebar?.close) {
+        window.roamAlphaAPI.ui.rightSidebar.close();
+      }
+    } else {
+      if (window.roamAlphaAPI?.ui?.rightSidebar?.open) {
+        window.roamAlphaAPI.ui.rightSidebar.open();
+      }
+    }
+  },
+  showGraphInSidebar: () => {
+    const uid = getCurrentPageUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
+      window.roamAlphaAPI.ui.rightSidebar.addWindow({
+        window: { type: "graph", "block-uid": uid }
+      });
+    }
+  },
+  searchInSidebar: () => {
+    const query = promptUser("Enter search query:");
+    if (!query)
+      return;
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
+      window.roamAlphaAPI.ui.rightSidebar.addWindow({
+        window: { type: "search-query", "search-query-str": query }
+      });
+    }
+  },
+  // ==================== Search Operations ====================
+  openCommandPalette: () => {
+    if (window.roamAlphaAPI?.ui?.commandPalette?.open) {
+      window.roamAlphaAPI.ui.commandPalette.open();
+    } else {
+      document.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "p",
+        code: "KeyP",
+        keyCode: 80,
+        metaKey: true,
+        bubbles: true,
+        cancelable: true
+      }));
+    }
+  },
   openSearch: () => {
     if (window.roamAlphaAPI?.ui?.commandPalette?.open) {
       window.roamAlphaAPI.ui.commandPalette.open();
@@ -1657,24 +1931,141 @@ var LEADER_COMMAND_REGISTRY = {
       const searchButton = document.querySelector(".rm-topbar .bp3-icon-search");
       if (searchButton) {
         searchButton.click();
-      } else {
-        document.dispatchEvent(new KeyboardEvent("keydown", {
-          key: "u",
-          code: "KeyU",
-          keyCode: 85,
-          metaKey: true,
-          bubbles: true,
-          cancelable: true
-        }));
       }
     }
   },
-  // Toggle
+  searchInPage: () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "f",
+      code: "KeyF",
+      keyCode: 70,
+      metaKey: true,
+      bubbles: true,
+      cancelable: true
+    }));
+  },
+  graphSearch: () => {
+    const query = promptUser("Enter graph search query:");
+    if (!query)
+      return;
+    if (window.roamAlphaAPI?.data?.search) {
+      const results = window.roamAlphaAPI.data.search({ "search-str": query, limit: 20 });
+      console.log("[Vim Mode] Graph search results:", results);
+      if (results && results.length > 0) {
+        const firstResult = results[0];
+        const uid = firstResult[":block/uid"] || firstResult[":node/title"];
+        if (uid && window.roamAlphaAPI?.ui?.mainWindow?.openBlock) {
+          window.roamAlphaAPI.ui.mainWindow.openBlock({ block: { uid } });
+        }
+      }
+    }
+  },
+  // ==================== Page Operations ====================
+  createPage: () => {
+    const title = promptUser("Enter new page title:");
+    if (!title)
+      return;
+    if (window.roamAlphaAPI?.data?.page?.create) {
+      window.roamAlphaAPI.data.page.create({ page: { title } }).then(() => {
+        if (window.roamAlphaAPI?.ui?.mainWindow?.openPage) {
+          window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title } });
+        }
+      });
+    }
+  },
+  deletePage: () => {
+    const uid = getCurrentPageUid();
+    if (!uid) {
+      console.warn("[Vim Mode] No page currently open");
+      return;
+    }
+    const confirmed = window.confirm("Are you sure you want to delete this page?");
+    if (!confirmed)
+      return;
+    if (window.roamAlphaAPI?.data?.page?.delete) {
+      window.roamAlphaAPI.data.page.delete({ page: { uid } });
+      if (window.roamAlphaAPI?.ui?.mainWindow?.openDailyNotes) {
+        window.roamAlphaAPI.ui.mainWindow.openDailyNotes();
+      }
+    }
+  },
+  renamePage: () => {
+    const uid = getCurrentPageUid();
+    if (!uid)
+      return;
+    const pageInfo = window.roamAlphaAPI?.data?.pull?.("[:node/title]", [":block/uid", uid]);
+    const currentTitle = pageInfo?.[":node/title"] || "";
+    const newTitle = promptUser("Enter new page title:", currentTitle);
+    if (!newTitle || newTitle === currentTitle)
+      return;
+    if (window.roamAlphaAPI?.data?.page?.update) {
+      window.roamAlphaAPI.data.page.update({ page: { uid, title: newTitle } });
+    }
+  },
+  openPageInSidebar: () => {
+    const uid = getCurrentPageUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
+      window.roamAlphaAPI.ui.rightSidebar.addWindow({
+        window: { type: "outline", "block-uid": uid }
+      });
+    }
+  },
+  showPageMentions: () => {
+    const uid = getCurrentPageUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
+      window.roamAlphaAPI.ui.rightSidebar.addWindow({
+        window: { type: "mentions", "block-uid": uid }
+      });
+    }
+  },
+  showPageGraph: () => {
+    const uid = getCurrentPageUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
+      window.roamAlphaAPI.ui.rightSidebar.addWindow({
+        window: { type: "graph", "block-uid": uid }
+      });
+    }
+  },
+  // ==================== Toggle Operations ====================
   toggleFold,
-  // History
-  undo,
-  redo,
-  // Help
+  // ==================== Focus Operations ====================
+  focusFirstBlock: () => {
+    if (window.roamAlphaAPI?.ui?.mainWindow?.focusFirstBlock) {
+      window.roamAlphaAPI.ui.mainWindow.focusFirstBlock();
+    }
+  },
+  focusCurrentBlock: () => {
+    const uid = getSelectedBlockUid();
+    if (!uid)
+      return;
+    if (window.roamAlphaAPI?.ui?.setBlockFocusAndSelection) {
+      window.roamAlphaAPI.ui.setBlockFocusAndSelection({
+        location: { "block-uid": uid, "window-id": "main-window" }
+      });
+    }
+  },
+  // ==================== History ====================
+  undo: () => {
+    if (window.roamAlphaAPI?.data?.undo) {
+      window.roamAlphaAPI.data.undo();
+    } else {
+      undo();
+    }
+  },
+  redo: () => {
+    if (window.roamAlphaAPI?.data?.redo) {
+      window.roamAlphaAPI.data.redo();
+    } else {
+      redo();
+    }
+  },
+  // ==================== Help ====================
   showHelpPanel
 };
 
