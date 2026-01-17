@@ -82,8 +82,8 @@ export function showPageHints() {
         hintEl.className = PAGE_HINT_CSS_CLASS;
         hintEl.textContent = label.toUpperCase();
         hintEl.dataset.label = label;
-        hintEl.style.left = `${rect.left + window.scrollX}px`;
-        hintEl.style.top = `${rect.top + window.scrollY}px`;
+        hintEl.style.left = `${rect.left}px`;
+        hintEl.style.top = `${rect.top}px`;
 
         overlay.appendChild(hintEl);
         pageHintState.hints.push({ element, label, hintEl });

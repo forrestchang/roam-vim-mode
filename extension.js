@@ -795,8 +795,8 @@ function showPageHints() {
     hintEl.className = PAGE_HINT_CSS_CLASS;
     hintEl.textContent = label.toUpperCase();
     hintEl.dataset.label = label;
-    hintEl.style.left = `${rect.left + window.scrollX}px`;
-    hintEl.style.top = `${rect.top + window.scrollY}px`;
+    hintEl.style.left = `${rect.left}px`;
+    hintEl.style.top = `${rect.top}px`;
     overlay.appendChild(hintEl);
     pageHintState.hints.push({ element, label, hintEl });
   });
@@ -1540,11 +1540,11 @@ var VIM_MODE_STYLES = `
 }
 
 #${PAGE_HINT_OVERLAY_ID} {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    width: 100vw;
+    height: 100vh;
     pointer-events: none;
     z-index: 10001;
 }
