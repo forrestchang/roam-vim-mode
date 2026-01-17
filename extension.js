@@ -962,7 +962,24 @@ async function growHighlightDown(mode) {
 }
 
 // Clipboard Commands
+
+// Helper function to get current block's text content
+async function getBlockText(blockElement) {
+    // Activate the block to get access to the textarea
+    await Roam.activateBlock(blockElement);
+    const textarea = Roam.getRoamBlockInput();
+    if (textarea) {
+        return textarea.value;
+    }
+    return '';
+}
+
 async function cutAndGoBackToNormal() {
+    // Get the text content before cutting
+    const textarea = Roam.getRoamBlockInput();
+    if (textarea) {
+        yankRegister = textarea.value;
+    }
     document.execCommand('cut');
     await delay(0);
     await returnToNormalMode();
@@ -970,22 +987,47 @@ async function cutAndGoBackToNormal() {
 
 async function paste() {
     await insertBlockAfter();
-    document.execCommand('paste');
+    // Use yank register if available, otherwise fall back to system clipboard
+    if (yankRegister) {
+        const textarea = Roam.getRoamBlockInput();
+        if (textarea) {
+            textarea.value = yankRegister;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    } else {
+        document.execCommand('paste');
+    }
     await returnToNormalMode();
 }
 
 async function pasteBefore() {
     await RoamVim.jumpBlocksInFocusedPanel(-1);
     await insertBlockAfter();
-    document.execCommand('paste');
+    // Use yank register if available, otherwise fall back to system clipboard
+    if (yankRegister) {
+        const textarea = Roam.getRoamBlockInput();
+        if (textarea) {
+            textarea.value = yankRegister;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    } else {
+        document.execCommand('paste');
+    }
     await returnToNormalMode();
 }
 
 async function copySelectedBlock(mode) {
-    if (mode === Mode.NORMAL) {
-        await Roam.highlight(RoamBlock.selected().element);
+    const blockElement = RoamBlock.selected().element;
+    // Get the block text content by entering edit mode
+    const text = await getBlockText(blockElement);
+    yankRegister = text;
+    // Also copy to system clipboard for external paste
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch (e) {
+        // Fallback: use execCommand
+        document.execCommand('copy');
     }
-    document.execCommand('copy');
     await returnToNormalMode();
 }
 
@@ -1000,6 +1042,13 @@ function copySelectedBlockEmbed() {
 async function enterOrCutInVisualMode(mode) {
     if (mode === Mode.NORMAL) {
         return Roam.highlight(RoamBlock.selected().element);
+    }
+    // In Visual mode, we need to get the text before cutting
+    // First get the highlighted block's text
+    const highlightedBlock = RoamHighlight.first();
+    if (highlightedBlock) {
+        const text = await getBlockText(highlightedBlock);
+        yankRegister = text;
     }
     await cutAndGoBackToNormal();
 }
@@ -1058,6 +1107,7 @@ let disconnectHandlers = [];
 let keydownHandler = null;
 let sequenceBuffer = '';
 let sequenceTimeout = null;
+let yankRegister = ''; // Internal buffer for yank/delete operations
 
 function startVimMode() {
     waitForSelectorToExist(Selectors.mainContent).then(async () => {
