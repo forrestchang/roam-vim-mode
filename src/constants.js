@@ -56,3 +56,7 @@ export const HINT_IDS = [0, 1, 2, 3, 4, 5];
 export const DEFAULT_HINT_KEYS = ['q', 'w', 'e', 'r', 't', 'b'];
 export const HINT_CHARS = 'asdfghjkl';
 export const SCROLL_PADDING = 50;
+
+// Which-key configuration
+export const WHICH_KEY_PANEL_ID = `${EXTENSION_ID}--which-key`;
+export const WHICH_KEY_DELAY = 400; // ms before showing popup

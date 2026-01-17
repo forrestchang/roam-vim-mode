@@ -6,6 +6,8 @@ import { DEFAULT_HINT_KEYS, HINT_CHARS, PAGE_HINT_CSS_CLASS, Selectors } from '.
 import { Mode, getMode } from './mode.js';
 import { pageHintState, hidePageHints, filterPageHints, enterPageHintMode, enterBlockHintMode } from './page-hints.js';
 import { showHelpPanel, hideHelpPanel, isHelpPanelOpen } from './help-panel.js';
+import { showWhichKey, showWhichKeyImmediate, hideWhichKey } from './which-key.js';
+import { DEFAULT_LEADER_CONFIG, LEADER_COMMAND_REGISTRY } from './leader-config.js';
 import {
     returnToNormalMode,
     selectBlockUp,
@@ -52,6 +54,79 @@ let sequenceTimeout = null;
 // Keys that start multi-key sequences - when pressed, wait for next key instead of triggering single-key commands
 const SEQUENCE_PREFIXES = ['g', 'z'];
 
+// ============== Leader Key State ==============
+let leaderConfig = DEFAULT_LEADER_CONFIG;
+
+let leaderState = {
+    active: false,
+    currentNode: leaderConfig,
+    path: [],
+};
+
+/**
+ * Set the leader key configuration (for user customization)
+ */
+export function setLeaderConfig(config) {
+    leaderConfig = config;
+    leaderState.currentNode = leaderConfig;
+}
+
+function enterLeaderMode() {
+    leaderState.active = true;
+    leaderState.currentNode = leaderConfig;
+    leaderState.path = ['SPC'];
+    showWhichKey(leaderConfig, ['SPC']);
+}
+
+function resetLeaderState() {
+    leaderState.active = false;
+    leaderState.currentNode = leaderConfig;
+    leaderState.path = [];
+    hideWhichKey();
+}
+
+function handleLeaderSequence(key, event) {
+    const currentNode = leaderState.currentNode;
+
+    // Check if key exists in current node
+    if (currentNode.keys && currentNode.keys[key]) {
+        const nextNode = currentNode.keys[key];
+
+        if (nextNode.keys) {
+            // It's a group - descend into it
+            leaderState.currentNode = nextNode;
+            leaderState.path.push(key);
+            showWhichKeyImmediate(nextNode, [...leaderState.path]);
+            return true;
+        } else if (nextNode.action) {
+            // It's a user-defined action (direct function)
+            try {
+                nextNode.action();
+            } catch (error) {
+                console.error('[Roam Vim Mode] Error executing action:', error);
+            }
+            resetLeaderState();
+            return true;
+        } else if (nextNode.command) {
+            // It's a predefined command
+            const commandFn = LEADER_COMMAND_REGISTRY[nextNode.command];
+            if (commandFn) {
+                commandFn();
+            }
+            resetLeaderState();
+            return true;
+        }
+    }
+
+    // Key not found - cancel leader mode
+    resetLeaderState();
+    return false;
+}
+
+export function isLeaderModeActive() {
+    return leaderState.active;
+}
+
 // ============== Keydown Handler ==============
 export function handleKeydown(event) {
     const mode = getMode();
@@ -95,6 +170,30 @@ export function handleKeydown(event) {
 
     // Let ESC pass through to Roam when command bar (Cmd+P) is open
     if (key === 'escape' && document.querySelector(Selectors.commandBar)) {
+        return;
+    }
+
+    // Handle leader key mode
+    if (leaderState.active) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (key === 'escape') {
+            resetLeaderState();
+            return;
+        }
+
+        // Use the actual key for case-sensitive matching (e.g., 'P' vs 'p')
+        const leaderKey = event.shiftKey && event.key.length === 1 ? event.key : key;
+        handleLeaderSequence(leaderKey, event);
+        return;
+    }
+
+    // Enter leader mode with Space in Normal mode (no modifiers)
+    if (mode === Mode.NORMAL && event.key === ' ' && !hasModifier) {
+        event.preventDefault();
+        event.stopPropagation();
+        enterLeaderMode();
         return;
     }
 

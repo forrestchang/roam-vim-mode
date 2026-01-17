@@ -11,6 +11,7 @@ import {
     HELP_PANEL_ID,
     PAGE_HINT_CSS_CLASS,
     PAGE_HINT_OVERLAY_ID,
+    WHICH_KEY_PANEL_ID,
 } from './constants.js';
 
 export const VIM_MODE_STYLES = `
@@ -224,5 +225,88 @@ export const VIM_MODE_STYLES = `
 
 .bp3-dark .${PAGE_HINT_CSS_CLASS}--matched {
     color: #98C1D9;
+}
+
+/* Which-key popup */
+#${WHICH_KEY_PANEL_ID} {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 300px;
+    max-width: 80vw;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 19999;
+    padding: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.bp3-dark #${WHICH_KEY_PANEL_ID} {
+    background: #30404d;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.${WHICH_KEY_PANEL_ID}--header {
+    font-size: 14px;
+    font-weight: 600;
+    color: #6a737d;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e1e4e8;
+}
+
+.bp3-dark .${WHICH_KEY_PANEL_ID}--header {
+    color: #a7b6c2;
+    border-bottom-color: #5c7080;
+}
+
+.${WHICH_KEY_PANEL_ID}--grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 6px 16px;
+}
+
+.${WHICH_KEY_PANEL_ID}--item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.${WHICH_KEY_PANEL_ID}--key {
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: bold;
+    background: #eef1f4;
+    padding: 2px 8px;
+    border-radius: 3px;
+    color: #2196F3;
+    min-width: 24px;
+    text-align: center;
+}
+
+.bp3-dark .${WHICH_KEY_PANEL_ID}--key {
+    background: #293742;
+    color: #48aff0;
+}
+
+.${WHICH_KEY_PANEL_ID}--name {
+    font-size: 13px;
+    color: #24292e;
+}
+
+.bp3-dark .${WHICH_KEY_PANEL_ID}--name {
+    color: #f5f8fa;
+}
+
+.${WHICH_KEY_PANEL_ID}--group {
+    color: #9C27B0;
+    font-weight: 500;
+}
+
+.bp3-dark .${WHICH_KEY_PANEL_ID}--group {
+    color: #ce93d8;
 }
 `;

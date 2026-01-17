@@ -11,19 +11,38 @@ import { RoamEvent } from './roam.js';
 import { VimRoamPanel } from './panel.js';
 import { updateVimView, clearVimView } from './view.js';
 import { hidePageHints } from './page-hints.js';
-import { handleKeydown } from './keybindings.js';
+import { handleKeydown, setLeaderConfig } from './keybindings.js';
 import { VIM_MODE_STYLES } from './styles.js';
 import { createModeIndicator, removeModeIndicator } from './mode-indicator.js';
 import { hideHelpPanel } from './help-panel.js';
+import { hideWhichKey } from './which-key.js';
+import { loadUserConfig, mergeConfigs } from './user-config.js';
+import { DEFAULT_LEADER_CONFIG } from './leader-config.js';
 
 // ============== Vim Mode State ==============
 let disconnectHandlers = [];
 let keydownHandler = null;
 
 // ============== Vim Mode Initialization ==============
+async function loadAndApplyUserConfig() {
+    try {
+        const userConfig = await loadUserConfig();
+        if (userConfig) {
+            const mergedConfig = mergeConfigs(DEFAULT_LEADER_CONFIG, userConfig);
+            setLeaderConfig(mergedConfig);
+            console.log('[Roam Vim Mode] User config applied');
+        }
+    } catch (error) {
+        console.error('[Roam Vim Mode] Failed to load user config:', error);
+    }
+}
+
 function startVimMode() {
     waitForSelectorToExist(Selectors.mainContent).then(async () => {
         await delay(300);
+
+        // Load user configuration
+        await loadAndApplyUserConfig();
 
         disconnectHandlers = [
             RoamEvent.onEditBlock(blockElement => {
@@ -66,6 +85,7 @@ function stopVimMode() {
     disconnectHandlers.forEach(disconnect => disconnect());
     disconnectHandlers = [];
     clearVimView();
+    hideWhichKey();
 
     if (keydownHandler) {
         document.removeEventListener('keydown', keydownHandler, true);
@@ -95,6 +115,7 @@ function onunload() {
     removeModeIndicator();
     hideHelpPanel();
     hidePageHints();
+    hideWhichKey();
 }
 
 export default {
