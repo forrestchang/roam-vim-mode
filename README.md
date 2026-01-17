@@ -96,30 +96,107 @@ When a block is selected, clickable elements (links, references, checkboxes) sho
 | `F` | Show page-wide hints (open in sidebar) |
 | `gf` | Show block hints to edit |
 
-### Leader Key (Spacemacs-style)
+### Leader Key (Spacemacs-style) - Experimental
 
-Press `Space` in Normal mode to open the which-key popup showing available commands:
+> **Note:** This is an experimental feature. Enable it in Settings > Vim Mode > "Enable Spacemacs-style Leader Key".
+
+Press `Space` in Normal mode to open the which-key popup showing available commands.
+
+#### Block Operations (`SPC b`)
 
 | Key | Description |
 |-----|-------------|
-| `SPC` | Show leader menu |
 | `SPC b y` | Copy block |
 | `SPC b r` | Copy block reference |
 | `SPC b e` | Copy block embed |
 | `SPC b p` | Paste after |
 | `SPC b P` | Paste before |
-| `SPC b d` | Cut/Delete block |
-| `SPC w h` | Panel left |
-| `SPC w l` | Panel right |
-| `SPC w d` | Close sidebar |
+| `SPC b d` | Delete block |
+| `SPC b x` | Cut block |
+| `SPC b n` | New block below |
+| `SPC b N` | New block above |
+| `SPC b o` | Open block in sidebar |
+| `SPC b m` | Show block mentions |
+| `SPC b z` | Zoom into block |
+
+#### Goto/Navigation (`SPC g`)
+
+| Key | Description |
+|-----|-------------|
 | `SPC g g` | First block |
 | `SPC g G` | Last block |
 | `SPC g d` | Daily Notes |
-| `SPC s s` | Search |
+| `SPC g h` | Go home (Daily Notes) |
+| `SPC g p` | Go to page (prompt) |
+| `SPC g b` | Go to block (prompt) |
+| `SPC g l` | Go to linked refs |
+
+#### Window/Sidebar (`SPC w`)
+
+| Key | Description |
+|-----|-------------|
+| `SPC w h` | Panel left |
+| `SPC w l` | Panel right |
+| `SPC w o` | Open right sidebar |
+| `SPC w c` | Close right sidebar |
+| `SPC w d` | Close sidebar page |
+| `SPC w L` | Toggle left sidebar |
+| `SPC w a` | Add block to sidebar |
+| `SPC w m` | Add mentions to sidebar |
+| `SPC w g` | Add graph to sidebar |
+| `SPC w s` | Search in sidebar |
+
+#### Search (`SPC s`)
+
+| Key | Description |
+|-----|-------------|
+| `SPC s s` | Command palette |
+| `SPC s p` | Find page |
+| `SPC s /` | Browser find (Cmd+F) |
+| `SPC s r` | Search in sidebar |
+| `SPC s g` | Graph search |
+
+#### Page Operations (`SPC p`)
+
+| Key | Description |
+|-----|-------------|
+| `SPC p n` | New page (prompt) |
+| `SPC p d` | Delete page |
+| `SPC p r` | Rename page (prompt) |
+| `SPC p o` | Open page in sidebar |
+| `SPC p m` | Show page mentions |
+| `SPC p g` | Show page graph |
+
+#### Toggle (`SPC t`)
+
+| Key | Description |
+|-----|-------------|
 | `SPC t f` | Toggle fold |
+| `SPC t l` | Toggle left sidebar |
+| `SPC t r` | Toggle right sidebar |
+
+#### Focus (`SPC f`)
+
+| Key | Description |
+|-----|-------------|
+| `SPC f f` | Focus first block |
+| `SPC f b` | Focus current block |
+
+#### Quick Commands
+
+| Key | Description |
+|-----|-------------|
 | `SPC u` | Undo |
 | `SPC r` | Redo |
 | `SPC ?` | Help |
+
+### Search (Normal Mode)
+
+| Key | Description |
+|-----|-------------|
+| `/` | Search in visible blocks |
+| `n` | Go to next match |
+| `N` | Go to previous match |
 
 ### Other
 
@@ -184,20 +261,52 @@ Use the `command` field to reference built-in commands:
 
 | Command | Description |
 |---------|-------------|
+| **Block Operations** | |
 | `copyBlock` | Copy the selected block |
 | `copyBlockReference` | Copy as `((uid))` |
 | `copyBlockEmbed` | Copy as `{{embed: ((uid))}}` |
 | `paste` | Paste after current block |
 | `pasteBefore` | Paste before current block |
-| `cutBlock` | Cut/delete the selected block |
-| `selectPanelLeft` | Switch to left panel |
-| `selectPanelRight` | Switch to right panel |
-| `closeSidebarPage` | Close the sidebar page |
+| `cutBlock` | Cut the selected block |
+| `deleteBlock` | Delete the selected block |
+| `createBlockBelow` | Create new block below |
+| `createBlockAbove` | Create new block above |
+| `openBlockInSidebar` | Open block in sidebar |
+| `showBlockMentions` | Show block mentions in sidebar |
+| `zoomIntoBlock` | Zoom into the selected block |
+| **Navigation** | |
 | `selectFirstBlock` | Jump to first block |
 | `selectLastBlock` | Jump to last block |
 | `gotoDailyNotes` | Navigate to Daily Notes |
-| `openSearch` | Open search/command palette |
+| `gotoPage` | Go to page (prompt) |
+| `gotoBlock` | Go to block (prompt) |
+| `gotoLinkedRefs` | Scroll to linked refs |
+| **Window/Panel** | |
+| `selectPanelLeft` | Switch to left panel |
+| `selectPanelRight` | Switch to right panel |
+| `closeSidebarPage` | Close the sidebar page |
+| `openRightSidebar` | Open right sidebar |
+| `closeRightSidebar` | Close right sidebar |
+| `toggleLeftSidebar` | Toggle left sidebar |
+| `toggleRightSidebar` | Toggle right sidebar |
+| `showGraphInSidebar` | Show page graph in sidebar |
+| `searchInSidebar` | Search in sidebar (prompt) |
+| **Search** | |
+| `openCommandPalette` | Open command palette |
+| `openSearch` | Open search/find page |
+| `searchInPage` | Browser find (Cmd+F) |
+| `graphSearch` | Search graph data |
+| **Page Operations** | |
+| `createPage` | Create new page (prompt) |
+| `deletePage` | Delete current page |
+| `renamePage` | Rename current page |
+| `openPageInSidebar` | Open page in sidebar |
+| `showPageMentions` | Show page mentions in sidebar |
+| `showPageGraph` | Show page graph in sidebar |
+| **Other** | |
 | `toggleFold` | Toggle block fold |
+| `focusFirstBlock` | Focus first block |
+| `focusCurrentBlock` | Focus current block |
 | `undo` | Undo last action |
 | `redo` | Redo last action |
 | `showHelpPanel` | Show help panel |
