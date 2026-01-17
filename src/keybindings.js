@@ -9,6 +9,7 @@ import { showHelpPanel, hideHelpPanel, isHelpPanelOpen } from './help-panel.js';
 import { showWhichKey, showWhichKeyImmediate, hideWhichKey } from './which-key.js';
 import { DEFAULT_LEADER_CONFIG, LEADER_COMMAND_REGISTRY } from './leader-config.js';
 import { enterSearchMode, exitSearchMode, handleSearchInput, nextMatch, previousMatch } from './search.js';
+import { isSpacemacsEnabled } from './settings.js';
 import {
     returnToNormalMode,
     selectBlockUp,
@@ -202,8 +203,8 @@ export function handleKeydown(event) {
         return;
     }
 
-    // Enter leader mode with Space in Normal mode (no modifiers)
-    if (mode === Mode.NORMAL && event.key === ' ' && !hasModifier) {
+    // Enter leader mode with Space in Normal mode (no modifiers) - only if Spacemacs mode is enabled
+    if (mode === Mode.NORMAL && event.key === ' ' && !hasModifier && isSpacemacsEnabled()) {
         event.preventDefault();
         event.stopPropagation();
         enterLeaderMode();

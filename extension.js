@@ -1678,6 +1678,18 @@ var LEADER_COMMAND_REGISTRY = {
   showHelpPanel
 };
 
+// src/settings.js
+var extensionAPIRef = null;
+var SETTING_SPACEMACS_ENABLED = "spacemacs-enabled";
+function setExtensionAPI(api) {
+  extensionAPIRef = api;
+}
+function isSpacemacsEnabled() {
+  if (!extensionAPIRef)
+    return false;
+  return extensionAPIRef.settings.get(SETTING_SPACEMACS_ENABLED) === true;
+}
+
 // src/keybindings.js
 var sequenceBuffer = "";
 var sequenceTimeout = null;
@@ -1787,7 +1799,7 @@ function handleKeydown(event) {
     handleLeaderSequence(leaderKey, event);
     return;
   }
-  if (mode === Mode.NORMAL && event.key === " " && !hasModifier) {
+  if (mode === Mode.NORMAL && event.key === " " && !hasModifier && isSpacemacsEnabled()) {
     event.preventDefault();
     event.stopPropagation();
     enterLeaderMode();
@@ -2535,6 +2547,20 @@ function stopVimMode() {
 }
 function onload({ extensionAPI }) {
   console.log("Roam Vim Mode extension loaded");
+  setExtensionAPI(extensionAPI);
+  extensionAPI.settings.panel.create({
+    tabTitle: "Vim Mode",
+    settings: [
+      {
+        id: SETTING_SPACEMACS_ENABLED,
+        name: "Enable Spacemacs-style Leader Key (Experimental)",
+        description: "Press Space in Normal mode to open a command menu with which-key popup. Allows multi-key sequences like SPC b y to copy block.",
+        action: {
+          type: "switch"
+        }
+      }
+    ]
+  });
   injectStyle(VIM_MODE_STYLES, `${EXTENSION_ID}--styles`);
   createModeIndicator();
   startVimMode();

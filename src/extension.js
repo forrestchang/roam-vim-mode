@@ -18,6 +18,7 @@ import { hideHelpPanel } from './help-panel.js';
 import { hideWhichKey } from './which-key.js';
 import { loadUserConfig, mergeConfigs } from './user-config.js';
 import { DEFAULT_LEADER_CONFIG } from './leader-config.js';
+import { setExtensionAPI, SETTING_SPACEMACS_ENABLED } from './settings.js';
 
 // ============== Vim Mode State ==============
 let disconnectHandlers = [];
@@ -101,6 +102,24 @@ function stopVimMode() {
 // ============== Extension Entry Points ==============
 function onload({ extensionAPI }) {
     console.log('Roam Vim Mode extension loaded');
+
+    // Store extensionAPI reference for settings access
+    setExtensionAPI(extensionAPI);
+
+    // Create settings panel
+    extensionAPI.settings.panel.create({
+        tabTitle: 'Vim Mode',
+        settings: [
+            {
+                id: SETTING_SPACEMACS_ENABLED,
+                name: 'Enable Spacemacs-style Leader Key (Experimental)',
+                description: 'Press Space in Normal mode to open a command menu with which-key popup. Allows multi-key sequences like SPC b y to copy block.',
+                action: {
+                    type: 'switch',
+                },
+            },
+        ],
+    });
 
     injectStyle(VIM_MODE_STYLES, `${EXTENSION_ID}--styles`);
     createModeIndicator();
