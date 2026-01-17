@@ -49,6 +49,9 @@ import {
 let sequenceBuffer = '';
 let sequenceTimeout = null;
 
+// Keys that start multi-key sequences - when pressed, wait for next key instead of triggering single-key commands
+const SEQUENCE_PREFIXES = ['g', 'z'];
+
 // ============== Keydown Handler ==============
 export function handleKeydown(event) {
     const mode = getMode();
@@ -153,8 +156,9 @@ function matchCommand(sequence, mode, event) {
     const isNormal = mode === Mode.NORMAL;
     const isVisual = mode === Mode.VISUAL;
     const isNormalOrVisual = isNormal || isVisual;
-    // Check if we're in a multi-key sequence (has a space = multiple keys pressed)
-    const isInSequence = sequence.includes(' ');
+
+    // Check if we started a sequence with a prefix key (e.g., pressed 'g' or 'z')
+    const sequencePrefix = SEQUENCE_PREFIXES.find(p => sequence.startsWith(p + ' '));
 
     // Close help panel if open
     if (isHelpPanelOpen()) {
@@ -171,13 +175,23 @@ function matchCommand(sequence, mode, event) {
 
     // Normal mode commands
     if (isNormal) {
+        // Multi-key sequences (must be checked before single-key commands)
+        if (sequence === 'g g') return selectFirstBlock;
+        if (sequence === 'g f') return enterBlockHintMode;
+        if (sequence === 'z z') return centerCurrentBlock;
+        if (sequence === 'z a') return toggleFold;
+
+        // If we're in a sequence (e.g., pressed 'g' or 'z') but didn't match above,
+        // block all other commands and wait for timeout to clear
+        if (sequencePrefix) {
+            return () => {}; // No-op, wait for sequence to complete or timeout
+        }
+
         // Navigation
         if (key === 'k' && !event.shiftKey && !event.ctrlKey) return selectBlockUp;
         if (key === 'j' && !event.shiftKey && !event.ctrlKey) return selectBlockDown;
         if (key === 'h' && event.shiftKey) return selectFirstVisibleBlock;
         if (key === 'l' && event.shiftKey) return selectLastVisibleBlock;
-        if (sequence === 'g g') return selectFirstBlock;
-        if (sequence === 'g f') return enterBlockHintMode;
         if (key === 'g' && event.shiftKey) return selectLastBlock;
         if (key === 'u' && event.ctrlKey) return selectManyBlocksUp;
         if (key === 'd' && event.ctrlKey) return selectManyBlocksDown;
@@ -207,18 +221,13 @@ function matchCommand(sequence, mode, event) {
         if (key === 'u' && !event.ctrlKey) return undo;
         if (key === 'r' && event.ctrlKey) return redo;
 
-        // Fold and viewport centering (z commands)
-        if (sequence === 'z z') return centerCurrentBlock;
-        if (sequence === 'z a') return toggleFold;
-
         // Help panel
         if (event.key === '?') return showHelpPanel;
 
         // Page hints mode (Vimium-style)
         // f = direct navigation, F (shift+f) = open in sidebar
-        // Only trigger if not in a multi-key sequence (e.g., 'g f' should not trigger)
-        if (key === 'f' && !event.shiftKey && !event.ctrlKey && !isInSequence) return () => enterPageHintMode(false);
-        if (key === 'f' && event.shiftKey && !event.ctrlKey && !isInSequence) return () => enterPageHintMode(true);
+        if (key === 'f' && !event.shiftKey && !event.ctrlKey) return () => enterPageHintMode(false);
+        if (key === 'f' && event.shiftKey && !event.ctrlKey) return () => enterPageHintMode(true);
 
         // Hint keys (in normal mode only)
         for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {

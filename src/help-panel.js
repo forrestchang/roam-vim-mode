@@ -27,7 +27,8 @@ const KEYBINDINGS = {
         { key: 'O', description: 'Insert block above' },
         { key: 'u', description: 'Undo' },
         { key: 'Ctrl+r', description: 'Redo' },
-        { key: 'z', description: 'Toggle fold' },
+        { key: 'za', description: 'Toggle fold' },
+        { key: 'zz', description: 'Center current block' },
     ],
     'Visual Mode': [
         { key: 'v', description: 'Enter visual mode' },
