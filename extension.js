@@ -982,6 +982,7 @@ var RoamVim = {
     const mode = getMode();
     if (mode === Mode.NORMAL) {
       VimRoamPanel.selected().selectRelativeBlock(blocksToJump);
+      updateVimView();
     }
     if (mode === Mode.VISUAL) {
       await repeatAsync(
@@ -1002,15 +1003,19 @@ async function selectBlockDown() {
 }
 async function selectFirstVisibleBlock() {
   VimRoamPanel.selected().selectFirstVisibleBlock();
+  updateVimView();
 }
 async function selectLastVisibleBlock() {
   VimRoamPanel.selected().selectLastVisibleBlock();
+  updateVimView();
 }
 async function selectFirstBlock() {
   VimRoamPanel.selected().selectFirstBlock();
+  updateVimView();
 }
 async function selectLastBlock() {
   VimRoamPanel.selected().selectLastBlock();
+  updateVimView();
 }
 async function selectManyBlocksUp() {
   await RoamVim.jumpBlocksInFocusedPanel(-8);
@@ -1020,9 +1025,11 @@ async function selectManyBlocksDown() {
 }
 async function scrollUp() {
   VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(-50);
+  updateVimView();
 }
 async function scrollDown() {
   VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(50);
+  updateVimView();
 }
 async function insertBlockAfter() {
   await Roam.activateBlock(RoamBlock.selected().element);
@@ -1043,9 +1050,11 @@ async function insertBlockBefore() {
 }
 function selectPanelLeft() {
   VimRoamPanel.previousPanel().select();
+  updateVimView();
 }
 function selectPanelRight() {
   VimRoamPanel.nextPanel().select();
+  updateVimView();
 }
 function closeSidebarPage() {
   const block = RoamBlock.selected().element;
