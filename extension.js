@@ -51,6 +51,7 @@ const Selectors = {
 };
 
 const PANEL_SELECTOR = `.${PANEL_CSS_CLASS}`;
+const HELP_PANEL_ID = `${EXTENSION_ID}--help-panel`;
 
 // ============== Utility Functions ==============
 function delay(millis) {
@@ -1184,6 +1185,15 @@ function matchCommand(sequence, mode, event) {
     const isVisual = mode === Mode.VISUAL;
     const isNormalOrVisual = isNormal || isVisual;
 
+    // Close help panel if open
+    if (isHelpPanelOpen()) {
+        if (key === 'escape' || event.key === '?') {
+            return hideHelpPanel;
+        }
+        // Block all other keys when help panel is open
+        return () => {};
+    }
+
     // Escape - all modes
     if (key === 'escape') {
         return returnToNormalMode;
@@ -1228,6 +1238,9 @@ function matchCommand(sequence, mode, event) {
 
         // Fold
         if (key === 'z' && !event.ctrlKey && !event.metaKey) return toggleFold;
+
+        // Help panel
+        if (event.key === '?') return showHelpPanel;
 
         // Hint keys (in normal mode only)
         for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {
@@ -1321,6 +1334,125 @@ const VIM_MODE_STYLES = `
 .${PANEL_CSS_CLASS} {
     position: relative;
 }
+
+#${HELP_PANEL_ID} {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 700px;
+    max-width: 90vw;
+    max-height: 80vh;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+    z-index: 20000;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.bp3-dark #${HELP_PANEL_ID} {
+    background: #30404d;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.${HELP_PANEL_ID}--header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e1e4e8;
+    background: #f6f8fa;
+}
+
+.bp3-dark .${HELP_PANEL_ID}--header {
+    background: #394b59;
+    border-bottom-color: #5c7080;
+}
+
+.${HELP_PANEL_ID}--title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #24292e;
+}
+
+.bp3-dark .${HELP_PANEL_ID}--title {
+    color: #f5f8fa;
+}
+
+.${HELP_PANEL_ID}--close {
+    font-size: 12px;
+    color: #6a737d;
+}
+
+.bp3-dark .${HELP_PANEL_ID}--close {
+    color: #a7b6c2;
+}
+
+.${HELP_PANEL_ID}--content {
+    padding: 16px 20px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+
+.${HELP_PANEL_ID}--section {
+    min-width: 0;
+}
+
+.${HELP_PANEL_ID}--category {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2196F3;
+    margin: 0 0 8px 0;
+    padding-bottom: 4px;
+    border-bottom: 2px solid #2196F3;
+}
+
+.bp3-dark .${HELP_PANEL_ID}--category {
+    color: #48aff0;
+    border-bottom-color: #48aff0;
+}
+
+.${HELP_PANEL_ID}--list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.${HELP_PANEL_ID}--item {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    font-size: 13px;
+}
+
+.${HELP_PANEL_ID}--key {
+    font-family: monospace;
+    font-size: 12px;
+    background: #eef1f4;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #d73a49;
+    white-space: nowrap;
+    min-width: 90px;
+    text-align: center;
+}
+
+.bp3-dark .${HELP_PANEL_ID}--key {
+    background: #293742;
+    color: #ff7373;
+}
+
+.${HELP_PANEL_ID}--desc {
+    color: #586069;
+}
+
+.bp3-dark .${HELP_PANEL_ID}--desc {
+    color: #bfccd6;
+}
 `;
 
 // ============== Mode Indicator ==============
@@ -1385,6 +1517,132 @@ function removeModeIndicator() {
     }
 }
 
+// ============== Help Panel ==============
+const KEYBINDINGS = {
+    'Navigation': [
+        { key: 'j', description: 'Move down' },
+        { key: 'k', description: 'Move up' },
+        { key: 'h', description: 'Switch to left panel' },
+        { key: 'l', description: 'Switch to right panel' },
+        { key: 'H', description: 'Jump to first visible block' },
+        { key: 'L', description: 'Jump to last visible block' },
+        { key: 'gg', description: 'Jump to first block' },
+        { key: 'G', description: 'Jump to last block' },
+        { key: 'Ctrl+u', description: 'Page up (8 blocks)' },
+        { key: 'Ctrl+d', description: 'Page down (8 blocks)' },
+        { key: 'Ctrl+y', description: 'Scroll up' },
+        { key: 'Ctrl+e', description: 'Scroll down' },
+    ],
+    'Editing': [
+        { key: 'i', description: 'Enter insert mode (start)' },
+        { key: 'a', description: 'Enter insert mode (end)' },
+        { key: 'o', description: 'Insert block below' },
+        { key: 'O', description: 'Insert block above' },
+        { key: 'u', description: 'Undo' },
+        { key: 'Ctrl+r', description: 'Redo' },
+        { key: 'z', description: 'Toggle fold' },
+    ],
+    'Visual Mode': [
+        { key: 'v', description: 'Enter visual mode' },
+        { key: 'd', description: 'Enter visual mode / Cut' },
+        { key: 'J', description: 'Grow selection down' },
+        { key: 'K', description: 'Grow selection up' },
+    ],
+    'Clipboard': [
+        { key: 'y', description: 'Copy block' },
+        { key: 'Alt+y', description: 'Copy block reference' },
+        { key: 'Y', description: 'Copy block embed' },
+        { key: 'p', description: 'Paste below' },
+        { key: 'P', description: 'Paste above' },
+    ],
+    'Block Movement': [
+        { key: 'Cmd+Shift+k', description: 'Move block up' },
+        { key: 'Cmd+Shift+j', description: 'Move block down' },
+    ],
+    'Hints (click links)': [
+        { key: 'q/w/e/r/t/f/b', description: 'Click hint' },
+        { key: 'Shift + hint', description: 'Shift-click hint' },
+        { key: 'Ctrl+Shift + hint', description: 'Open in sidebar' },
+    ],
+    'Other': [
+        { key: 'Esc', description: 'Return to normal mode' },
+        { key: 'Ctrl+w', description: 'Close sidebar page' },
+        { key: '?', description: 'Toggle this help panel' },
+    ],
+};
+
+function showHelpPanel() {
+    // If panel already exists, close it
+    if (document.getElementById(HELP_PANEL_ID)) {
+        hideHelpPanel();
+        return;
+    }
+
+    const panel = document.createElement('div');
+    panel.id = HELP_PANEL_ID;
+
+    // Create header
+    const header = document.createElement('div');
+    header.className = `${HELP_PANEL_ID}--header`;
+    header.innerHTML = `
+        <span class="${HELP_PANEL_ID}--title">Vim Mode Keybindings</span>
+        <span class="${HELP_PANEL_ID}--close">Press ? or Esc to close</span>
+    `;
+    panel.appendChild(header);
+
+    // Create content container
+    const content = document.createElement('div');
+    content.className = `${HELP_PANEL_ID}--content`;
+
+    // Generate keybinding sections
+    for (const [category, bindings] of Object.entries(KEYBINDINGS)) {
+        const section = document.createElement('div');
+        section.className = `${HELP_PANEL_ID}--section`;
+
+        const categoryTitle = document.createElement('h3');
+        categoryTitle.className = `${HELP_PANEL_ID}--category`;
+        categoryTitle.textContent = category;
+        section.appendChild(categoryTitle);
+
+        const list = document.createElement('div');
+        list.className = `${HELP_PANEL_ID}--list`;
+
+        for (const binding of bindings) {
+            const item = document.createElement('div');
+            item.className = `${HELP_PANEL_ID}--item`;
+
+            const keySpan = document.createElement('span');
+            keySpan.className = `${HELP_PANEL_ID}--key`;
+            keySpan.textContent = binding.key;
+
+            const descSpan = document.createElement('span');
+            descSpan.className = `${HELP_PANEL_ID}--desc`;
+            descSpan.textContent = binding.description;
+
+            item.appendChild(keySpan);
+            item.appendChild(descSpan);
+            list.appendChild(item);
+        }
+
+        section.appendChild(list);
+        content.appendChild(section);
+    }
+
+    panel.appendChild(content);
+    document.body.appendChild(panel);
+}
+
+function hideHelpPanel() {
+    const panel = document.getElementById(HELP_PANEL_ID);
+    if (panel) {
+        panel.remove();
+    }
+}
+
+function isHelpPanelOpen() {
+    return !!document.getElementById(HELP_PANEL_ID);
+}
+
 // ============== Extension Entry Points ==============
 function onload({ extensionAPI }) {
     console.log('Roam Vim Mode extension loaded');
@@ -1410,6 +1668,9 @@ function onunload() {
 
     // Remove mode indicator
     removeModeIndicator();
+
+    // Remove help panel if open
+    hideHelpPanel();
 }
 
 export default {
