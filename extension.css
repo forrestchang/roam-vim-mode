@@ -1,0 +1,89 @@
+/**
+ * Roam Vim Mode - Extension Styles
+ *
+ * These styles can be customized by users.
+ * The extension also injects its own styles via JavaScript,
+ * but this file provides additional customization options.
+ */
+
+/* Selected block highlight - light mode */
+.roam-vim-mode--highlight {
+    border-radius: 5px;
+    background-color: #FFF3E2 !important;
+    transition: background-color 0.1s ease;
+}
+
+/* Selected block highlight - dark mode */
+.bp3-dark .roam-vim-mode--highlight {
+    background-color: #3d3024 !important;
+}
+
+/* Hint labels on clickable elements */
+.roam-vim-mode--hint::after {
+    position: relative;
+    top: 5px;
+    display: inline-block;
+    width: 18px;
+    margin-right: -18px;
+    height: 18px;
+    font-size: 10px;
+    font-style: italic;
+    font-weight: bold;
+    color: darkorchid;
+    text-shadow: 1px 1px 0px orange;
+    opacity: 0.7;
+}
+
+/* Hint position adjustment for checkboxes */
+.check-container.roam-vim-mode--hint::after {
+    position: absolute;
+    top: 3px;
+}
+
+/* Individual hint labels */
+.roam-vim-mode--hint0::after { content: "[q]"; }
+.roam-vim-mode--hint1::after { content: "[w]"; }
+.roam-vim-mode--hint2::after { content: "[e]"; }
+.roam-vim-mode--hint3::after { content: "[r]"; }
+.roam-vim-mode--hint4::after { content: "[t]"; }
+.roam-vim-mode--hint5::after { content: "[f]"; }
+.roam-vim-mode--hint6::after { content: "[b]"; }
+
+/* Mode indicator styles */
+#roam-vim-mode--mode-indicator {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: bold;
+    z-index: 10000;
+    pointer-events: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Hide mode indicator if user prefers */
+/* Uncomment the following to hide the mode indicator:
+#roam-vim-mode--mode-indicator {
+    display: none !important;
+}
+*/
+
+/* Panel styling */
+.roam-vim-mode--panel {
+    position: relative;
+}
+
+/* Blur pixel (invisible element for unfocusing) */
+#roam-vim-mode--unfocus-pixel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
