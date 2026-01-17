@@ -52,6 +52,8 @@ const Selectors = {
 
 const PANEL_SELECTOR = `.${PANEL_CSS_CLASS}`;
 const HELP_PANEL_ID = `${EXTENSION_ID}--help-panel`;
+const PAGE_HINT_CSS_CLASS = `${EXTENSION_ID}--page-hint`;
+const PAGE_HINT_OVERLAY_ID = `${EXTENSION_ID}--page-hint-overlay`;
 
 // ============== Utility Functions ==============
 function delay(millis) {
@@ -753,9 +755,20 @@ const Mode = {
     INSERT: 'INSERT',
     VISUAL: 'VISUAL',
     NORMAL: 'NORMAL',
+    HINT: 'HINT', // Page-wide hint mode
+};
+
+// Page hints state
+const pageHintState = {
+    active: false,
+    hints: [],       // Array of {element, label}
+    inputBuffer: '', // Characters typed so far
 };
 
 function getMode() {
+    if (pageHintState.active) {
+        return Mode.HINT;
+    }
     if (getActiveEditElement()) {
         return Mode.INSERT;
     }
@@ -836,6 +849,138 @@ function clearVimHints() {
 
 function getHint(n) {
     return document.querySelector(`.${hintCssClass(n)}`);
+}
+
+// ============== Page Hints (Vimium-style F command) ==============
+const HINT_CHARS = 'asdfghjkl';
+
+function generateHintLabels(count) {
+    const labels = [];
+    const chars = HINT_CHARS.split('');
+    const base = chars.length;
+
+    // Generate labels: a, s, d, ..., then aa, as, ad, ...
+    if (count <= base) {
+        // Single character labels
+        for (let i = 0; i < count && i < base; i++) {
+            labels.push(chars[i]);
+        }
+    } else {
+        // Two character labels
+        for (let i = 0; i < base && labels.length < count; i++) {
+            for (let j = 0; j < base && labels.length < count; j++) {
+                labels.push(chars[i] + chars[j]);
+            }
+        }
+    }
+    return labels;
+}
+
+function getClickableElements() {
+    const clickableSelectors = [
+        Selectors.link,
+        Selectors.externalLink,
+        Selectors.checkbox,
+        Selectors.button,
+        Selectors.blockReference,
+        Selectors.hiddenSection,
+        Selectors.foldButton,
+        Selectors.pageReferenceLink,
+    ];
+
+    const elements = document.querySelectorAll(clickableSelectors.join(', '));
+    // Filter to only visible elements
+    return Array.from(elements).filter(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 &&
+               rect.top >= 0 && rect.left >= 0 &&
+               rect.bottom <= window.innerHeight &&
+               rect.right <= window.innerWidth;
+    });
+}
+
+function showPageHints() {
+    // Clear any existing hints
+    hidePageHints();
+
+    const elements = getClickableElements();
+    const labels = generateHintLabels(elements.length);
+
+    // Create overlay container
+    const overlay = document.createElement('div');
+    overlay.id = PAGE_HINT_OVERLAY_ID;
+    document.body.appendChild(overlay);
+
+    // Create hints for each element
+    pageHintState.hints = [];
+    elements.forEach((element, i) => {
+        if (i >= labels.length) return;
+
+        const rect = element.getBoundingClientRect();
+        const label = labels[i];
+
+        const hintEl = document.createElement('span');
+        hintEl.className = PAGE_HINT_CSS_CLASS;
+        hintEl.textContent = label.toUpperCase();
+        hintEl.dataset.label = label;
+        hintEl.style.left = `${rect.left + window.scrollX}px`;
+        hintEl.style.top = `${rect.top + window.scrollY}px`;
+
+        overlay.appendChild(hintEl);
+        pageHintState.hints.push({ element, label, hintEl });
+    });
+
+    pageHintState.active = true;
+    pageHintState.inputBuffer = '';
+}
+
+function hidePageHints() {
+    const overlay = document.getElementById(PAGE_HINT_OVERLAY_ID);
+    if (overlay) {
+        overlay.remove();
+    }
+    pageHintState.active = false;
+    pageHintState.hints = [];
+    pageHintState.inputBuffer = '';
+}
+
+function filterPageHints(char) {
+    pageHintState.inputBuffer += char.toLowerCase();
+    const buffer = pageHintState.inputBuffer;
+
+    // Find exact match
+    const exactMatch = pageHintState.hints.find(h => h.label === buffer);
+    if (exactMatch) {
+        // Click the element
+        Mouse.leftClick(exactMatch.element);
+        hidePageHints();
+        return true;
+    }
+
+    // Filter visible hints
+    let hasMatches = false;
+    pageHintState.hints.forEach(hint => {
+        if (hint.label.startsWith(buffer)) {
+            hint.hintEl.style.display = '';
+            // Highlight matched portion
+            const matched = buffer.toUpperCase();
+            const remaining = hint.label.substring(buffer.length).toUpperCase();
+            hint.hintEl.innerHTML = `<span class="${PAGE_HINT_CSS_CLASS}--matched">${matched}</span>${remaining}`;
+            hasMatches = true;
+        } else {
+            hint.hintEl.style.display = 'none';
+        }
+    });
+
+    if (!hasMatches) {
+        hidePageHints();
+    }
+
+    return hasMatches;
+}
+
+function enterPageHintMode() {
+    showPageHints();
 }
 
 // ============== Vim Core ==============
@@ -1125,6 +1270,38 @@ function handleKeydown(event) {
     const key = event.key.toLowerCase();
     const hasModifier = event.ctrlKey || event.metaKey || event.altKey;
 
+    // Handle hint mode specially
+    if (mode === Mode.HINT) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (key === 'escape') {
+            hidePageHints();
+        } else if (key === 'backspace') {
+            // Allow backspace to remove last character
+            if (pageHintState.inputBuffer.length > 0) {
+                pageHintState.inputBuffer = pageHintState.inputBuffer.slice(0, -1);
+                // Re-filter hints
+                const buffer = pageHintState.inputBuffer;
+                pageHintState.hints.forEach(hint => {
+                    if (hint.label.startsWith(buffer)) {
+                        hint.hintEl.style.display = '';
+                        const matched = buffer.toUpperCase();
+                        const remaining = hint.label.substring(buffer.length).toUpperCase();
+                        hint.hintEl.innerHTML = matched ?
+                            `<span class="${PAGE_HINT_CSS_CLASS}--matched">${matched}</span>${remaining}` :
+                            hint.label.toUpperCase();
+                    } else {
+                        hint.hintEl.style.display = 'none';
+                    }
+                });
+            }
+        } else if (HINT_CHARS.includes(key) && !hasModifier) {
+            filterPageHints(key);
+        }
+        return;
+    }
+
     // Don't intercept when in insert mode unless it's Escape
     if (mode === Mode.INSERT && key !== 'escape') {
         return;
@@ -1242,6 +1419,9 @@ function matchCommand(sequence, mode, event) {
 
         // Help panel
         if (event.key === '?') return showHelpPanel;
+
+        // Page hints mode (Vimium-style F command)
+        if (key === 'f' && event.shiftKey && !event.ctrlKey) return enterPageHintMode;
 
         // Hint keys (in normal mode only)
         for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {
@@ -1454,6 +1634,47 @@ const VIM_MODE_STYLES = `
 .bp3-dark .${HELP_PANEL_ID}--desc {
     color: #bfccd6;
 }
+
+#${PAGE_HINT_OVERLAY_ID} {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10001;
+}
+
+.${PAGE_HINT_CSS_CLASS} {
+    position: absolute;
+    display: inline-block;
+    padding: 2px 5px;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: black;
+    background: linear-gradient(to bottom, #FFF785 0%, #FFC542 100%);
+    border: 1px solid #E3BE23;
+    border-radius: 3px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    z-index: 10002;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+}
+
+.${PAGE_HINT_CSS_CLASS}--matched {
+    color: #008000;
+}
+
+.bp3-dark .${PAGE_HINT_CSS_CLASS} {
+    background: linear-gradient(to bottom, #3D5A80 0%, #293241 100%);
+    color: #E0FBFC;
+    border-color: #5C7A9E;
+}
+
+.bp3-dark .${PAGE_HINT_CSS_CLASS}--matched {
+    color: #98C1D9;
+}
 `;
 
 // ============== Mode Indicator ==============
@@ -1502,6 +1723,11 @@ function updateModeIndicator() {
         case Mode.VISUAL:
             indicator.textContent = '-- VISUAL --';
             indicator.style.backgroundColor = '#FF9800';
+            indicator.style.color = 'white';
+            break;
+        case Mode.HINT:
+            indicator.textContent = '-- HINT --';
+            indicator.style.backgroundColor = '#9C27B0';
             indicator.style.color = 'white';
             break;
     }
@@ -1561,9 +1787,10 @@ const KEYBINDINGS = {
         { key: 'Cmd+Shift+j', description: 'Move block down' },
     ],
     'Hints (click links)': [
-        { key: 'q/w/e/r/t/f/b', description: 'Click hint' },
+        { key: 'q/w/e/r/t/f/b', description: 'Click hint in block' },
         { key: 'Shift + hint', description: 'Shift-click hint' },
         { key: 'Ctrl+Shift + hint', description: 'Open in sidebar' },
+        { key: 'F', description: 'Show page-wide hints' },
     ],
     'Other': [
         { key: 'Esc', description: 'Return to normal mode' },
@@ -1672,6 +1899,9 @@ function onunload() {
 
     // Remove help panel if open
     hideHelpPanel();
+
+    // Remove page hints if showing
+    hidePageHints();
 }
 
 export default {
