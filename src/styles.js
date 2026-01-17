@@ -16,11 +16,11 @@ import {
 export const VIM_MODE_STYLES = `
 .${SELECTED_BLOCK_CSS_CLASS} {
     border-radius: 5px;
-    background-color: #FFF3E2;
+    background-color: #F5F5F5;
 }
 
 .bp3-dark .${SELECTED_BLOCK_CSS_CLASS} {
-    background-color: #3d3024;
+    background-color: #424242;
 }
 
 .${HINT_CSS_CLASS}::after {

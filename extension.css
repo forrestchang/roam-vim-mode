@@ -9,13 +9,13 @@
 /* Selected block highlight - light mode */
 .roam-vim-mode--highlight {
     border-radius: 5px;
-    background-color: #FFF3E2 !important;
+    background-color: #F5F5F5 !important;
     transition: background-color 0.1s ease;
 }
 
 /* Selected block highlight - dark mode */
 .bp3-dark .roam-vim-mode--highlight {
-    background-color: #3d3024 !important;
+    background-color: #424242 !important;
 }
 
 /* Hint labels on clickable elements */
