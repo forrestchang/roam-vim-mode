@@ -625,7 +625,8 @@ class VimRoamPanel {
     }
 
     scrollUntilBlockIsVisible(block) {
-        this.scroll(blockScrollOverflow(block));
+        // Use scrollIntoView for more reliable scrolling across different DOM structures
+        block.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     }
 
     firstBlock() {
