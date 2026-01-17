@@ -1427,11 +1427,11 @@ function matchCommand(sequence, mode, event) {
 var VIM_MODE_STYLES = `
 .${SELECTED_BLOCK_CSS_CLASS} {
     border-radius: 5px;
-    background-color: #FFF3E2;
+    background-color: #F5F5F5;
 }
 
 .bp3-dark .${SELECTED_BLOCK_CSS_CLASS} {
-    background-color: #3d3024;
+    background-color: #424242;
 }
 
 .${HINT_CSS_CLASS}::after {
@@ -1536,6 +1536,8 @@ var VIM_MODE_STYLES = `
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 20px;
+    flex: 1;
+    min-height: 0;
 }
 
 .${HELP_PANEL_ID}--section {
