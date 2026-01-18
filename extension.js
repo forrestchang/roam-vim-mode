@@ -40,6 +40,7 @@ var Selectors = {
   externalLink: "a",
   referenceItem: ".rm-reference-item",
   inlineReference: ".rm-inline-reference",
+  referenceFootnote: ".rm-block__ref-count-footnote",
   zoomPath: ".rm-zoom-path",
   zoomItemContent: ".rm-zoom-item-content",
   breadcrumbsContainer: ".zoom-mentions-view",
@@ -1627,6 +1628,13 @@ async function deleteBlock() {
   await Roam.deleteBlock();
   await returnToNormalMode();
 }
+function expandReferences() {
+  const block = RoamBlock.selected().element;
+  const footnote = block.querySelector(Selectors.referenceFootnote);
+  if (footnote) {
+    Mouse.leftClick(footnote);
+  }
+}
 
 // src/leader-config.js
 function getSelectedBlockUid() {
@@ -2275,6 +2283,8 @@ function matchCommand(sequence, mode, event) {
       return centerCurrentBlock;
     if (sequence === "z a")
       return toggleFold;
+    if (sequence === "z r")
+      return expandReferences;
     if (sequence === "d d")
       return deleteBlock;
     if (sequence === "y y")

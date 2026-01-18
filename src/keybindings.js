@@ -48,6 +48,7 @@ import {
     ctrlShiftClickHint,
     toggleFold,
     deleteBlock,
+    expandReferences,
 } from './commands.js';
 
 // ============== Sequence State ==============
@@ -294,6 +295,7 @@ function matchCommand(sequence, mode, event) {
         if (sequence === 'g f') return enterBlockHintMode;
         if (sequence === 'z z') return centerCurrentBlock;
         if (sequence === 'z a') return toggleFold;
+        if (sequence === 'z r') return expandReferences;
         if (sequence === 'd d') return deleteBlock;
         if (sequence === 'y y') return () => copySelectedBlock(mode);
 
