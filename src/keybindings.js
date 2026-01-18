@@ -182,8 +182,8 @@ export function handleKeydown(event) {
         return;
     }
 
-    // Let ESC pass through to Roam when command bar (Cmd+P) is open
-    if (key === 'escape' && document.querySelector(Selectors.commandBar)) {
+    // Let ESC pass through to Roam when command bar (Cmd+P) or search dialog (Cmd+U) is open
+    if (key === 'escape' && (document.querySelector(Selectors.commandBar) || document.querySelector('.bp3-overlay'))) {
         return;
     }
 

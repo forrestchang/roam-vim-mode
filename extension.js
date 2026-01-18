@@ -2176,7 +2176,7 @@ function handleKeydown(event) {
   if (mode === Mode.INSERT && key !== "escape") {
     return;
   }
-  if (key === "escape" && document.querySelector(Selectors.commandBar)) {
+  if (key === "escape" && (document.querySelector(Selectors.commandBar) || document.querySelector(".bp3-overlay"))) {
     return;
   }
   if (leaderState.active) {
