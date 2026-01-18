@@ -599,7 +599,7 @@ var VimRoamPanel = class _VimRoamPanel {
   }
   select() {
     panelState.focusedPanel = panelState.panelOrder.indexOf(this.element);
-    this.element.scrollIntoView({ behavior: "smooth" });
+    this.element.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
   static selected() {
     panelState.focusedPanel = Math.min(panelState.focusedPanel, panelState.panelOrder.length - 1);
@@ -1846,7 +1846,7 @@ var LEADER_COMMAND_REGISTRY = {
   gotoLinkedRefs: () => {
     const linkedRefs = document.querySelector(".rm-reference-main");
     if (linkedRefs) {
-      linkedRefs.scrollIntoView({ behavior: "smooth" });
+      linkedRefs.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   },
   // ==================== Window/Panel Operations ====================

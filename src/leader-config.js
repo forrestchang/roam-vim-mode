@@ -301,7 +301,7 @@ export const LEADER_COMMAND_REGISTRY = {
         // Scroll to linked references section
         const linkedRefs = document.querySelector('.rm-reference-main');
         if (linkedRefs) {
-            linkedRefs.scrollIntoView({ behavior: 'smooth' });
+            linkedRefs.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
     },
 

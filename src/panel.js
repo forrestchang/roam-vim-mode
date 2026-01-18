@@ -118,7 +118,7 @@ export class VimRoamPanel {
 
     select() {
         panelState.focusedPanel = panelState.panelOrder.indexOf(this.element);
-        this.element.scrollIntoView({ behavior: 'smooth' });
+        this.element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
     static selected() {
