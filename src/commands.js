@@ -300,3 +300,22 @@ export function ctrlShiftClickHint(n) {
 export function toggleFold() {
     RoamBlock.selected().toggleFold();
 }
+
+// ============== Delete Block ==============
+export async function deleteBlock() {
+    const blockElement = RoamBlock.selected().element;
+    // First, yank the text (vim dd saves to register)
+    await Roam.activateBlock(blockElement);
+    const textarea = Roam.getRoamBlockInput();
+    if (textarea) {
+        yankRegister = textarea.value;
+        try {
+            await navigator.clipboard.writeText(textarea.value);
+        } catch (e) {
+            // Clipboard write may fail silently
+        }
+    }
+    // Then delete the block using Roam's method
+    await Roam.deleteBlock();
+    await returnToNormalMode();
+}

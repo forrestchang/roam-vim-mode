@@ -1613,6 +1613,20 @@ function ctrlShiftClickHint(n) {
 function toggleFold() {
   RoamBlock.selected().toggleFold();
 }
+async function deleteBlock() {
+  const blockElement = RoamBlock.selected().element;
+  await Roam.activateBlock(blockElement);
+  const textarea = Roam.getRoamBlockInput();
+  if (textarea) {
+    yankRegister = textarea.value;
+    try {
+      await navigator.clipboard.writeText(textarea.value);
+    } catch (e) {
+    }
+  }
+  await Roam.deleteBlock();
+  await returnToNormalMode();
+}
 
 // src/leader-config.js
 function getSelectedBlockUid() {
@@ -2084,7 +2098,7 @@ function isSpacemacsEnabled() {
 // src/keybindings.js
 var sequenceBuffer = "";
 var sequenceTimeout = null;
-var SEQUENCE_PREFIXES = ["g", "z"];
+var SEQUENCE_PREFIXES = ["g", "z", "d", "y"];
 var leaderConfig = DEFAULT_LEADER_CONFIG;
 var leaderState = {
   active: false,
@@ -2261,7 +2275,15 @@ function matchCommand(sequence, mode, event) {
       return centerCurrentBlock;
     if (sequence === "z a")
       return toggleFold;
+    if (sequence === "d d")
+      return deleteBlock;
+    if (sequence === "y y")
+      return () => copySelectedBlock(mode);
     if (sequencePrefix) {
+      return () => {
+      };
+    }
+    if (SEQUENCE_PREFIXES.includes(key) && sequence === key && !event.shiftKey && !event.ctrlKey && !event.altKey) {
       return () => {
       };
     }
@@ -2297,7 +2319,7 @@ function matchCommand(sequence, mode, event) {
       return paste;
     if (key === "p" && event.shiftKey)
       return pasteBefore;
-    if (key === "y" && !event.shiftKey && !event.altKey)
+    if (key === "y" && !event.shiftKey && !event.altKey && !event.ctrlKey)
       return () => copySelectedBlock(mode);
     if (key === "y" && event.altKey)
       return copySelectedBlockReference;

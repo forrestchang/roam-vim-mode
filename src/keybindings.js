@@ -47,6 +47,7 @@ import {
     shiftClickHint,
     ctrlShiftClickHint,
     toggleFold,
+    deleteBlock,
 } from './commands.js';
 
 // ============== Sequence State ==============
@@ -54,7 +55,7 @@ let sequenceBuffer = '';
 let sequenceTimeout = null;
 
 // Keys that start multi-key sequences - when pressed, wait for next key instead of triggering single-key commands
-const SEQUENCE_PREFIXES = ['g', 'z'];
+const SEQUENCE_PREFIXES = ['g', 'z', 'd', 'y'];
 
 // ============== Leader Key State ==============
 let leaderConfig = DEFAULT_LEADER_CONFIG;
@@ -293,11 +294,18 @@ function matchCommand(sequence, mode, event) {
         if (sequence === 'g f') return enterBlockHintMode;
         if (sequence === 'z z') return centerCurrentBlock;
         if (sequence === 'z a') return toggleFold;
+        if (sequence === 'd d') return deleteBlock;
+        if (sequence === 'y y') return () => copySelectedBlock(mode);
 
         // If we're in a sequence (e.g., pressed 'g' or 'z') but didn't match above,
         // block all other commands and wait for timeout to clear
         if (sequencePrefix) {
             return () => {}; // No-op, wait for sequence to complete or timeout
+        }
+
+        // If we just pressed a sequence prefix key alone (no modifiers), wait for next key
+        if (SEQUENCE_PREFIXES.includes(key) && sequence === key && !event.shiftKey && !event.ctrlKey && !event.altKey) {
+            return () => {}; // No-op, wait for next key in sequence
         }
 
         // Navigation
@@ -325,7 +333,7 @@ function matchCommand(sequence, mode, event) {
         // Clipboard
         if (key === 'p' && !event.shiftKey) return paste;
         if (key === 'p' && event.shiftKey) return pasteBefore;
-        if (key === 'y' && !event.shiftKey && !event.altKey) return () => copySelectedBlock(mode);
+        if (key === 'y' && !event.shiftKey && !event.altKey && !event.ctrlKey) return () => copySelectedBlock(mode);
         if (key === 'y' && event.altKey) return copySelectedBlockReference;
         if (key === 'y' && event.shiftKey) return copySelectedBlockEmbed;
         if (key === 'd' && !event.ctrlKey) return () => enterOrCutInVisualMode(mode);
