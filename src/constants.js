@@ -44,6 +44,7 @@ export const Selectors = {
     externalLink: 'a',
     referenceItem: '.rm-reference-item',
     inlineReference: '.rm-inline-reference',
+    referenceFootnote: '.rm-block__ref-count-footnote',
     zoomPath: '.rm-zoom-path',
     zoomItemContent: '.rm-zoom-item-content',
     breadcrumbsContainer: '.zoom-mentions-view',

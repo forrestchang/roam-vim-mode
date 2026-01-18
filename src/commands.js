@@ -319,3 +319,12 @@ export async function deleteBlock() {
     await Roam.deleteBlock();
     await returnToNormalMode();
 }
+
+// ============== Reference Commands ==============
+export function expandReferences() {
+    const block = RoamBlock.selected().element;
+    const footnote = block.querySelector(Selectors.referenceFootnote);
+    if (footnote) {
+        Mouse.leftClick(footnote);
+    }
+}
