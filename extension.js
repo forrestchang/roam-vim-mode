@@ -410,20 +410,6 @@ var Roam = {
     await Mouse.leftClick(foldButton);
   }
 };
-function getBlockUid(htmlBlockId) {
-  const UID_LENGTH = 9;
-  return htmlBlockId.substr(htmlBlockId?.length - UID_LENGTH);
-}
-function copyBlockReference(htmlBlockId) {
-  if (!htmlBlockId)
-    return;
-  return navigator.clipboard.writeText(`((${getBlockUid(htmlBlockId)}))`);
-}
-function copyBlockEmbed(htmlBlockId) {
-  if (!htmlBlockId)
-    return;
-  return navigator.clipboard.writeText(`{{embed: ((${getBlockUid(htmlBlockId)}))}}`);
-}
 var RoamEvent = {
   onSidebarToggle(handler) {
     const isSidebarShowing = () => !!document.querySelector(Selectors.sidebarContent);
@@ -755,105 +741,11 @@ var pageHintState = {
   editBlock: false
   // When true, hints target blocks for editing instead of links
 };
-function generateHintLabels(count) {
-  const labels = [];
-  const chars = HINT_CHARS.split("");
-  const base = chars.length;
-  if (count <= base) {
-    for (let i = 0; i < count && i < base; i++) {
-      labels.push(chars[i]);
-    }
-  } else {
-    for (let i = 0; i < base && labels.length < count; i++) {
-      for (let j = 0; j < base && labels.length < count; j++) {
-        labels.push(chars[i] + chars[j]);
-      }
-    }
-  }
-  return labels;
-}
-function getClickableElements() {
-  const clickableSelectors = [
-    Selectors.link,
-    // .rm-page-ref - page references and tags
-    Selectors.blockReference
-    // .rm-block-ref - block references
-  ];
-  const elements = document.querySelectorAll(clickableSelectors.join(", "));
-  const externalLinks = document.querySelectorAll("a[href]");
-  const allElements = [...Array.from(elements)];
-  externalLinks.forEach((link) => {
-    if (link.classList.contains("bp3-button") || link.closest(".bp3-button") || link.classList.contains("bp3-menu-item") || link.closest(".bp3-popover") || link.closest(".rm-topbar") || link.closest(".roam-sidebar-container")) {
-      return;
-    }
-    if (link.classList.contains("rm-page-ref") || link.classList.contains("rm-block-ref")) {
-      return;
-    }
-    allElements.push(link);
-  });
-  return allElements.filter((el) => {
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
-  });
-}
-function getBlockElements() {
-  const elements = document.querySelectorAll(Selectors.block);
-  return Array.from(elements).filter((el) => {
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
-  });
-}
-function updateHintPositions() {
-  pageHintState.hints.forEach((hint) => {
-    const rect = hint.element.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth) {
-      hint.hintEl.style.left = `${rect.left}px`;
-      hint.hintEl.style.top = `${rect.top}px`;
-      hint.hintEl.style.visibility = "visible";
-    } else {
-      hint.hintEl.style.visibility = "hidden";
-    }
-  });
-}
-function addScrollListeners() {
-  pageHintState.scrollHandler = () => {
-    requestAnimationFrame(updateHintPositions);
-  };
-  window.addEventListener("scroll", pageHintState.scrollHandler, true);
-}
 function removeScrollListeners() {
   if (pageHintState.scrollHandler) {
     window.removeEventListener("scroll", pageHintState.scrollHandler, true);
     pageHintState.scrollHandler = null;
   }
-}
-function showPageHints(options = {}) {
-  hidePageHints();
-  pageHintState.openInSidebar = options.openInSidebar || false;
-  pageHintState.editBlock = options.editBlock || false;
-  const elements = pageHintState.editBlock ? getBlockElements() : getClickableElements();
-  const labels = generateHintLabels(elements.length);
-  const overlay = document.createElement("div");
-  overlay.id = PAGE_HINT_OVERLAY_ID;
-  document.body.appendChild(overlay);
-  pageHintState.hints = [];
-  elements.forEach((element, i) => {
-    if (i >= labels.length)
-      return;
-    const rect = element.getBoundingClientRect();
-    const label = labels[i];
-    const hintEl = document.createElement("span");
-    hintEl.className = PAGE_HINT_CSS_CLASS;
-    hintEl.textContent = label;
-    hintEl.dataset.label = label;
-    hintEl.style.left = `${rect.left}px`;
-    hintEl.style.top = `${rect.top}px`;
-    overlay.appendChild(hintEl);
-    pageHintState.hints.push({ element, label, hintEl });
-  });
-  pageHintState.active = true;
-  pageHintState.inputBuffer = "";
-  addScrollListeners();
 }
 function hidePageHints() {
   removeScrollListeners();
@@ -891,15 +783,6 @@ function filterPageHints(char) {
     hidePageHints();
   }
   return hasMatches;
-}
-function enterPageHintMode(options = {}) {
-  if (typeof options === "boolean") {
-    options = { openInSidebar: options };
-  }
-  showPageHints(options);
-}
-function enterBlockHintMode() {
-  showPageHints({ editBlock: true });
 }
 
 // src/search.js
@@ -1147,111 +1030,32 @@ var KEYBINDINGS = {
     { key: "k", description: "Move up" },
     { key: "h", description: "Switch to left panel" },
     { key: "l", description: "Switch to right panel" },
-    { key: "H", description: "Jump to first visible block" },
-    { key: "L", description: "Jump to last visible block" },
     { key: "gg", description: "Jump to first block" },
-    { key: "G", description: "Jump to last block" },
-    { key: "Ctrl+u", description: "Page up (8 blocks)" },
-    { key: "Ctrl+d", description: "Page down (8 blocks)" },
-    { key: "Ctrl+y", description: "Scroll up" },
-    { key: "Ctrl+e", description: "Scroll down" }
+    { key: "G", description: "Jump to last block" }
   ],
   "Editing": [
     { key: "i", description: "Enter insert mode (start)" },
     { key: "a", description: "Enter insert mode (end)" },
     { key: "o", description: "Insert block below" },
     { key: "O", description: "Insert block above" },
+    { key: "V", description: "Enter visual mode (line)" },
+    { key: "dd", description: "Delete block" },
     { key: "u", description: "Undo" },
     { key: "Ctrl+r", description: "Redo" },
-    { key: "za", description: "Toggle fold" },
-    { key: "zz", description: "Center current block" }
-  ],
-  "Visual Mode": [
-    { key: "v", description: "Enter visual mode" },
-    { key: "d", description: "Enter visual mode / Cut" },
-    { key: "J", description: "Grow selection down" },
-    { key: "K", description: "Grow selection up" }
-  ],
-  "Clipboard": [
-    { key: "y", description: "Copy block" },
-    { key: "Alt+y", description: "Copy block reference" },
-    { key: "Y", description: "Copy block embed" },
-    { key: "p", description: "Paste below" },
-    { key: "P", description: "Paste above" }
-  ],
-  "Block Movement": [
-    { key: "Cmd+Shift+k", description: "Move block up" },
-    { key: "Cmd+Shift+j", description: "Move block down" }
-  ],
-  "Hints (click links)": [
-    { key: "q/w/e/r/t/b", description: "Click hint in block" },
-    { key: "Shift + hint", description: "Shift-click hint" },
-    { key: "Ctrl+Shift + hint", description: "Open in sidebar" },
-    { key: "f", description: "Show page-wide hints" },
-    { key: "F", description: "Open page hint in sidebar" },
-    { key: "gf", description: "Show block hints to edit" }
-  ],
-  "Leader Key (SPC) - Block": [
-    { key: "SPC b y", description: "Copy block" },
-    { key: "SPC b r", description: "Copy block reference" },
-    { key: "SPC b e", description: "Copy block embed" },
-    { key: "SPC b p/P", description: "Paste after/before" },
-    { key: "SPC b d", description: "Delete block" },
-    { key: "SPC b x", description: "Cut block" },
-    { key: "SPC b n/N", description: "New block below/above" },
-    { key: "SPC b o", description: "Open block in sidebar" },
-    { key: "SPC b m", description: "Show block mentions" },
-    { key: "SPC b z", description: "Zoom into block" }
-  ],
-  "Leader Key (SPC) - Goto": [
-    { key: "SPC g g/G", description: "First/Last block" },
-    { key: "SPC g d/h", description: "Daily Notes / Home" },
-    { key: "SPC g p", description: "Go to page..." },
-    { key: "SPC g b", description: "Go to block..." },
-    { key: "SPC g l", description: "Go to linked refs" }
-  ],
-  "Leader Key (SPC) - Window": [
-    { key: "SPC w h/l", description: "Panel left/right" },
-    { key: "SPC w o/c", description: "Open/Close right sidebar" },
-    { key: "SPC w d", description: "Close sidebar page" },
-    { key: "SPC w L", description: "Toggle left sidebar" },
-    { key: "SPC w a", description: "Add block to sidebar" },
-    { key: "SPC w m", description: "Add mentions to sidebar" },
-    { key: "SPC w g", description: "Add graph to sidebar" },
-    { key: "SPC w s", description: "Search in sidebar" }
-  ],
-  "Leader Key (SPC) - Search": [
-    { key: "SPC s s", description: "Command palette" },
-    { key: "SPC s p", description: "Find page" },
-    { key: "SPC s /", description: "Browser find (Cmd+F)" },
-    { key: "SPC s r", description: "Search in sidebar" },
-    { key: "SPC s g", description: "Graph search" }
-  ],
-  "Leader Key (SPC) - Page": [
-    { key: "SPC p n", description: "New page" },
-    { key: "SPC p d", description: "Delete page" },
-    { key: "SPC p r", description: "Rename page" },
-    { key: "SPC p o", description: "Open page in sidebar" },
-    { key: "SPC p m", description: "Show page mentions" },
-    { key: "SPC p g", description: "Show page graph" }
-  ],
-  "Leader Key (SPC) - Other": [
-    { key: "SPC t f", description: "Toggle fold" },
-    { key: "SPC t l/r", description: "Toggle left/right sidebar" },
-    { key: "SPC f f", description: "Focus first block" },
-    { key: "SPC f b", description: "Focus current block" },
-    { key: "SPC u", description: "Undo" },
-    { key: "SPC r", description: "Redo" },
-    { key: "SPC ?", description: "Help" }
+    { key: "z", description: "Toggle fold" },
+    { key: "c", description: "Center current block" }
   ],
   "Search": [
     { key: "/", description: "Search in visible blocks" },
     { key: "n", description: "Go to next match" },
     { key: "N", description: "Go to previous match" }
   ],
+  "Hints": [
+    { key: "q/w/e/r/t/b", description: "Click link in block" },
+    { key: "Shift + hint", description: "Shift-click link" }
+  ],
   "Other": [
     { key: "Esc", description: "Return to normal mode" },
-    { key: "Ctrl+w", description: "Close sidebar page" },
     { key: "?", description: "Toggle this help panel" }
   ]
 };
@@ -1385,6 +1189,29 @@ function renderWhichKeyPopup(node, path) {
   document.body.appendChild(panel);
 }
 
+// src/leader-config.js
+var DEFAULT_LEADER_CONFIG = {
+  name: "+leader",
+  keys: {
+    // Keybindings will be added here as needed
+  }
+};
+var LEADER_COMMAND_REGISTRY = {
+  // Commands will be added here as needed
+};
+
+// src/settings.js
+var extensionAPIRef = null;
+var SETTING_SPACEMACS_ENABLED = "spacemacs-enabled";
+function setExtensionAPI(api) {
+  extensionAPIRef = api;
+}
+function isSpacemacsEnabled() {
+  if (!extensionAPIRef)
+    return false;
+  return extensionAPIRef.settings.get(SETTING_SPACEMACS_ENABLED) === true;
+}
+
 // src/commands.js
 var yankRegister = "";
 async function returnToNormalMode() {
@@ -1416,34 +1243,12 @@ async function selectBlockUp() {
 async function selectBlockDown() {
   await RoamVim.jumpBlocksInFocusedPanel(1);
 }
-async function selectFirstVisibleBlock() {
-  VimRoamPanel.selected().selectFirstVisibleBlock();
-  updateVimView();
-}
-async function selectLastVisibleBlock() {
-  VimRoamPanel.selected().selectLastVisibleBlock();
-  updateVimView();
-}
 async function selectFirstBlock() {
   VimRoamPanel.selected().selectFirstBlock();
   updateVimView();
 }
 async function selectLastBlock() {
   VimRoamPanel.selected().selectLastBlock();
-  updateVimView();
-}
-async function selectManyBlocksUp() {
-  await RoamVim.jumpBlocksInFocusedPanel(-8);
-}
-async function selectManyBlocksDown() {
-  await RoamVim.jumpBlocksInFocusedPanel(8);
-}
-async function scrollUp() {
-  VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(-50);
-  updateVimView();
-}
-async function scrollDown() {
-  VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(50);
   updateVimView();
 }
 async function centerCurrentBlock() {
@@ -1482,100 +1287,8 @@ function selectPanelRight() {
   VimRoamPanel.nextPanel().select();
   updateVimView();
 }
-function closeSidebarPage() {
-  const block = RoamBlock.selected().element;
-  const pageContainer = block.closest(`${Selectors.sidebarContent} > div`);
-  const closeButton = pageContainer?.querySelector(Selectors.closeButton);
-  if (closeButton) {
-    Mouse.leftClick(closeButton);
-  }
-}
 function highlightSelectedBlock() {
   Roam.highlight(RoamBlock.selected().element);
-}
-async function growHighlightUp(mode) {
-  if (mode === Mode.NORMAL) {
-    await Roam.highlight(RoamBlock.selected().element);
-  }
-  await Keyboard.simulateKey(Keyboard.UP_ARROW, 0, { shiftKey: true });
-}
-async function growHighlightDown(mode) {
-  if (mode === Mode.NORMAL) {
-    await Roam.highlight(RoamBlock.selected().element);
-  }
-  await Keyboard.simulateKey(Keyboard.DOWN_ARROW, 0, { shiftKey: true });
-}
-async function getBlockText(blockElement) {
-  await Roam.activateBlock(blockElement);
-  const textarea = Roam.getRoamBlockInput();
-  if (textarea) {
-    return textarea.value;
-  }
-  return "";
-}
-async function cutAndGoBackToNormal() {
-  const textarea = Roam.getRoamBlockInput();
-  if (textarea) {
-    yankRegister = textarea.value;
-  }
-  document.execCommand("cut");
-  await delay(0);
-  await returnToNormalMode();
-}
-async function paste() {
-  await insertBlockAfter();
-  if (yankRegister) {
-    const textarea = Roam.getRoamBlockInput();
-    if (textarea) {
-      textarea.value = yankRegister;
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-  } else {
-    document.execCommand("paste");
-  }
-  await returnToNormalMode();
-}
-async function pasteBefore() {
-  await RoamVim.jumpBlocksInFocusedPanel(-1);
-  await insertBlockAfter();
-  if (yankRegister) {
-    const textarea = Roam.getRoamBlockInput();
-    if (textarea) {
-      textarea.value = yankRegister;
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-  } else {
-    document.execCommand("paste");
-  }
-  await returnToNormalMode();
-}
-async function copySelectedBlock(mode) {
-  const blockElement = RoamBlock.selected().element;
-  const text = await getBlockText(blockElement);
-  yankRegister = text;
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch (e) {
-    document.execCommand("copy");
-  }
-  await returnToNormalMode();
-}
-function copySelectedBlockReference() {
-  copyBlockReference(VimRoamPanel.selected().selectedBlock().id);
-}
-function copySelectedBlockEmbed() {
-  copyBlockEmbed(VimRoamPanel.selected().selectedBlock().id);
-}
-async function enterOrCutInVisualMode(mode) {
-  if (mode === Mode.NORMAL) {
-    return Roam.highlight(RoamBlock.selected().element);
-  }
-  const highlightedBlock = RoamHighlight.first();
-  if (highlightedBlock) {
-    const text = await getBlockText(highlightedBlock);
-    yankRegister = text;
-  }
-  await cutAndGoBackToNormal();
 }
 async function undo() {
   await Keyboard.simulateKey(KEY_TO_CODE["z"], 0, { key: "z", metaKey: true });
@@ -1584,14 +1297,6 @@ async function undo() {
 async function redo() {
   await Keyboard.simulateKey(KEY_TO_CODE["z"], 0, { key: "z", shiftKey: true, metaKey: true });
   await returnToNormalMode();
-}
-async function moveBlockUp() {
-  RoamBlock.selected().edit();
-  await Keyboard.simulateKey(Keyboard.UP_ARROW, 0, { metaKey: true, shiftKey: true });
-}
-async function moveBlockDown() {
-  RoamBlock.selected().edit();
-  await Keyboard.simulateKey(Keyboard.DOWN_ARROW, 0, { metaKey: true, shiftKey: true });
 }
 function clickHint(n) {
   const hint = getHint(n);
@@ -1603,12 +1308,6 @@ function shiftClickHint(n) {
   const hint = getHint(n);
   if (hint) {
     Mouse.leftClick(hint, { shiftKey: true });
-  }
-}
-function ctrlShiftClickHint(n) {
-  const hint = getHint(n);
-  if (hint) {
-    Mouse.leftClick(hint, { shiftKey: true, metaKey: true });
   }
 }
 function toggleFold() {
@@ -1628,495 +1327,17 @@ async function deleteBlock() {
   await Roam.deleteBlock();
   await returnToNormalMode();
 }
-function expandReferences() {
-  const block = RoamBlock.selected().element;
-  const footnote = block.querySelector(Selectors.referenceFootnote);
-  if (footnote) {
-    Mouse.leftClick(footnote);
-  }
-}
-
-// src/leader-config.js
-function getSelectedBlockUid() {
-  const panel = VimRoamPanel.selected();
-  if (!panel)
-    return null;
-  const block = panel.selectedBlock();
-  return block?.id || null;
-}
-function getCurrentPageUid() {
-  if (window.roamAlphaAPI?.ui?.mainWindow?.getOpenPageOrBlockUid) {
-    return window.roamAlphaAPI.ui.mainWindow.getOpenPageOrBlockUid();
-  }
-  const match = window.location.hash.match(/\/page\/([a-zA-Z0-9_-]+)/);
-  return match ? match[1] : null;
-}
-function promptUser(message, defaultValue = "") {
-  return window.prompt(message, defaultValue);
-}
-var DEFAULT_LEADER_CONFIG = {
-  name: "+leader",
-  keys: {
-    // Block operations
-    "b": {
-      name: "+block",
-      keys: {
-        "y": { name: "Copy block", command: "copyBlock" },
-        "r": { name: "Copy reference", command: "copyBlockReference" },
-        "e": { name: "Copy embed", command: "copyBlockEmbed" },
-        "p": { name: "Paste after", command: "paste" },
-        "P": { name: "Paste before", command: "pasteBefore" },
-        "d": { name: "Delete block", command: "deleteBlock" },
-        "x": { name: "Cut block", command: "cutBlock" },
-        "n": { name: "New block below", command: "createBlockBelow" },
-        "N": { name: "New block above", command: "createBlockAbove" },
-        "o": { name: "Open in sidebar", command: "openBlockInSidebar" },
-        "m": { name: "Show mentions", command: "showBlockMentions" },
-        "z": { name: "Zoom into block", command: "zoomIntoBlock" }
-      }
-    },
-    // Goto/Navigation
-    "g": {
-      name: "+goto",
-      keys: {
-        "g": { name: "First block", command: "selectFirstBlock" },
-        "G": { name: "Last block", command: "selectLastBlock" },
-        "d": { name: "Daily Notes", command: "gotoDailyNotes" },
-        "p": { name: "Go to page...", command: "gotoPage" },
-        "b": { name: "Go to block...", command: "gotoBlock" },
-        "h": { name: "Go home (Daily Notes)", command: "gotoDailyNotes" },
-        "l": { name: "Go to linked refs", command: "gotoLinkedRefs" }
-      }
-    },
-    // Window/Panel operations
-    "w": {
-      name: "+window",
-      keys: {
-        "h": { name: "Panel left", command: "selectPanelLeft" },
-        "l": { name: "Panel right", command: "selectPanelRight" },
-        "o": { name: "Open right sidebar", command: "openRightSidebar" },
-        "c": { name: "Close right sidebar", command: "closeRightSidebar" },
-        "d": { name: "Close sidebar page", command: "closeSidebarPage" },
-        "L": { name: "Toggle left sidebar", command: "toggleLeftSidebar" },
-        "a": { name: "Add block to sidebar", command: "openBlockInSidebar" },
-        "m": { name: "Add mentions to sidebar", command: "showBlockMentions" },
-        "g": { name: "Add graph to sidebar", command: "showGraphInSidebar" },
-        "s": { name: "Search in sidebar", command: "searchInSidebar" }
-      }
-    },
-    // Search operations
-    "s": {
-      name: "+search",
-      keys: {
-        "s": { name: "Command palette", command: "openCommandPalette" },
-        "p": { name: "Find page", command: "openSearch" },
-        "/": { name: "Search in page", command: "searchInPage" },
-        "r": { name: "Search in sidebar", command: "searchInSidebar" },
-        "g": { name: "Graph search", command: "graphSearch" }
-      }
-    },
-    // Page operations
-    "p": {
-      name: "+page",
-      keys: {
-        "n": { name: "New page", command: "createPage" },
-        "d": { name: "Delete page", command: "deletePage" },
-        "r": { name: "Rename page", command: "renamePage" },
-        "o": { name: "Open in sidebar", command: "openPageInSidebar" },
-        "m": { name: "Show mentions", command: "showPageMentions" },
-        "g": { name: "Show graph", command: "showPageGraph" }
-      }
-    },
-    // Toggle operations
-    "t": {
-      name: "+toggle",
-      keys: {
-        "f": { name: "Fold/Unfold", command: "toggleFold" },
-        "l": { name: "Left sidebar", command: "toggleLeftSidebar" },
-        "r": { name: "Right sidebar", command: "toggleRightSidebar" }
-      }
-    },
-    // Focus operations
-    "f": {
-      name: "+focus",
-      keys: {
-        "f": { name: "Focus first block", command: "focusFirstBlock" },
-        "b": { name: "Focus current block", command: "focusCurrentBlock" }
-      }
-    },
-    // History - single key commands
-    "u": { name: "Undo", command: "undo" },
-    "r": { name: "Redo", command: "redo" },
-    // Help
-    "?": { name: "Help", command: "showHelpPanel" }
-  }
-};
-var LEADER_COMMAND_REGISTRY = {
-  // ==================== Block Operations ====================
-  copyBlock: () => copySelectedBlock(Mode.NORMAL),
-  copyBlockReference: copySelectedBlockReference,
-  copyBlockEmbed: copySelectedBlockEmbed,
-  paste,
-  pasteBefore,
-  cutBlock: () => enterOrCutInVisualMode(Mode.VISUAL),
-  deleteBlock: () => {
-    const uid = getSelectedBlockUid();
-    if (!uid) {
-      console.warn("[Vim Mode] No block selected");
-      return;
-    }
-    if (window.roamAlphaAPI?.data?.block?.delete) {
-      window.roamAlphaAPI.data.block.delete({ block: { uid } });
-    } else {
-      enterOrCutInVisualMode(Mode.VISUAL);
-    }
-  },
-  createBlockBelow: () => {
-    const uid = getSelectedBlockUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.data?.block?.create) {
-      const blockInfo = window.roamAlphaAPI.data.pull("[{:block/parents [:block/uid :block/order]}]", [":block/uid", uid]);
-      if (blockInfo) {
-        const parentUid = blockInfo[":block/parents"]?.[0]?.[":block/uid"];
-        if (parentUid) {
-          window.roamAlphaAPI.data.block.create({
-            location: { "parent-uid": parentUid, order: "last" },
-            block: { string: "" }
-          }).then(() => {
-            window.roamAlphaAPI.ui.mainWindow.focusFirstBlock?.();
-          });
-        }
-      }
-    }
-  },
-  createBlockAbove: () => {
-    const uid = getSelectedBlockUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.data?.block?.create) {
-      const blockInfo = window.roamAlphaAPI.data.pull("[{:block/parents [:block/uid]} :block/order]", [":block/uid", uid]);
-      if (blockInfo) {
-        const parentUid = blockInfo[":block/parents"]?.[0]?.[":block/uid"];
-        const order = blockInfo[":block/order"] || 0;
-        if (parentUid) {
-          window.roamAlphaAPI.data.block.create({
-            location: { "parent-uid": parentUid, order },
-            block: { string: "" }
-          });
-        }
-      }
-    }
-  },
-  openBlockInSidebar: () => {
-    const uid = getSelectedBlockUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
-      window.roamAlphaAPI.ui.rightSidebar.addWindow({
-        window: { type: "block", "block-uid": uid }
-      });
-    }
-  },
-  showBlockMentions: () => {
-    const uid = getSelectedBlockUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
-      window.roamAlphaAPI.ui.rightSidebar.addWindow({
-        window: { type: "mentions", "block-uid": uid }
-      });
-    }
-  },
-  zoomIntoBlock: () => {
-    const uid = getSelectedBlockUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.mainWindow?.openBlock) {
-      window.roamAlphaAPI.ui.mainWindow.openBlock({ block: { uid } });
-    }
-  },
-  // ==================== Navigation ====================
-  selectFirstBlock,
-  selectLastBlock,
-  gotoDailyNotes: () => {
-    if (window.roamAlphaAPI?.ui?.mainWindow?.openDailyNotes) {
-      window.roamAlphaAPI.ui.mainWindow.openDailyNotes();
-    } else {
-      const dailyNotesLink = document.querySelector(".rm-topbar .bp3-icon-calendar");
-      if (dailyNotesLink) {
-        dailyNotesLink.click();
-      }
-    }
-  },
-  gotoPage: () => {
-    const title = promptUser("Enter page title:");
-    if (!title)
-      return;
-    if (window.roamAlphaAPI?.ui?.mainWindow?.openPage) {
-      window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title } });
-    }
-  },
-  gotoBlock: () => {
-    const uid = promptUser("Enter block UID:");
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.mainWindow?.openBlock) {
-      window.roamAlphaAPI.ui.mainWindow.openBlock({ block: { uid } });
-    }
-  },
-  gotoLinkedRefs: () => {
-    const linkedRefs = document.querySelector(".rm-reference-main");
-    if (linkedRefs) {
-      linkedRefs.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
-  },
-  // ==================== Window/Panel Operations ====================
-  selectPanelLeft,
-  selectPanelRight,
-  closeSidebarPage,
-  openRightSidebar: () => {
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.open) {
-      window.roamAlphaAPI.ui.rightSidebar.open();
-    }
-  },
-  closeRightSidebar: () => {
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.close) {
-      window.roamAlphaAPI.ui.rightSidebar.close();
-    }
-  },
-  toggleLeftSidebar: () => {
-    const leftSidebar = document.querySelector(".roam-sidebar-container");
-    const isOpen = leftSidebar && !leftSidebar.classList.contains("rm-sidebar-closed");
-    if (isOpen) {
-      if (window.roamAlphaAPI?.ui?.leftSidebar?.close) {
-        window.roamAlphaAPI.ui.leftSidebar.close();
-      }
-    } else {
-      if (window.roamAlphaAPI?.ui?.leftSidebar?.open) {
-        window.roamAlphaAPI.ui.leftSidebar.open();
-      }
-    }
-  },
-  toggleRightSidebar: () => {
-    const rightSidebar = document.getElementById("right-sidebar");
-    const isOpen = rightSidebar && rightSidebar.classList.contains("open");
-    if (isOpen) {
-      if (window.roamAlphaAPI?.ui?.rightSidebar?.close) {
-        window.roamAlphaAPI.ui.rightSidebar.close();
-      }
-    } else {
-      if (window.roamAlphaAPI?.ui?.rightSidebar?.open) {
-        window.roamAlphaAPI.ui.rightSidebar.open();
-      }
-    }
-  },
-  showGraphInSidebar: () => {
-    const uid = getCurrentPageUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
-      window.roamAlphaAPI.ui.rightSidebar.addWindow({
-        window: { type: "graph", "block-uid": uid }
-      });
-    }
-  },
-  searchInSidebar: () => {
-    const query = promptUser("Enter search query:");
-    if (!query)
-      return;
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
-      window.roamAlphaAPI.ui.rightSidebar.addWindow({
-        window: { type: "search-query", "search-query-str": query }
-      });
-    }
-  },
-  // ==================== Search Operations ====================
-  openCommandPalette: () => {
-    if (window.roamAlphaAPI?.ui?.commandPalette?.open) {
-      window.roamAlphaAPI.ui.commandPalette.open();
-    } else {
-      document.dispatchEvent(new KeyboardEvent("keydown", {
-        key: "p",
-        code: "KeyP",
-        keyCode: 80,
-        metaKey: true,
-        bubbles: true,
-        cancelable: true
-      }));
-    }
-  },
-  openSearch: () => {
-    if (window.roamAlphaAPI?.ui?.commandPalette?.open) {
-      window.roamAlphaAPI.ui.commandPalette.open();
-    } else {
-      const searchButton = document.querySelector(".rm-topbar .bp3-icon-search");
-      if (searchButton) {
-        searchButton.click();
-      }
-    }
-  },
-  searchInPage: () => {
-    document.dispatchEvent(new KeyboardEvent("keydown", {
-      key: "f",
-      code: "KeyF",
-      keyCode: 70,
-      metaKey: true,
-      bubbles: true,
-      cancelable: true
-    }));
-  },
-  graphSearch: () => {
-    const query = promptUser("Enter graph search query:");
-    if (!query)
-      return;
-    if (window.roamAlphaAPI?.data?.search) {
-      const results = window.roamAlphaAPI.data.search({ "search-str": query, limit: 20 });
-      console.log("[Vim Mode] Graph search results:", results);
-      if (results && results.length > 0) {
-        const firstResult = results[0];
-        const uid = firstResult[":block/uid"] || firstResult[":node/title"];
-        if (uid && window.roamAlphaAPI?.ui?.mainWindow?.openBlock) {
-          window.roamAlphaAPI.ui.mainWindow.openBlock({ block: { uid } });
-        }
-      }
-    }
-  },
-  // ==================== Page Operations ====================
-  createPage: () => {
-    const title = promptUser("Enter new page title:");
-    if (!title)
-      return;
-    if (window.roamAlphaAPI?.data?.page?.create) {
-      window.roamAlphaAPI.data.page.create({ page: { title } }).then(() => {
-        if (window.roamAlphaAPI?.ui?.mainWindow?.openPage) {
-          window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title } });
-        }
-      });
-    }
-  },
-  deletePage: () => {
-    const uid = getCurrentPageUid();
-    if (!uid) {
-      console.warn("[Vim Mode] No page currently open");
-      return;
-    }
-    const confirmed = window.confirm("Are you sure you want to delete this page?");
-    if (!confirmed)
-      return;
-    if (window.roamAlphaAPI?.data?.page?.delete) {
-      window.roamAlphaAPI.data.page.delete({ page: { uid } });
-      if (window.roamAlphaAPI?.ui?.mainWindow?.openDailyNotes) {
-        window.roamAlphaAPI.ui.mainWindow.openDailyNotes();
-      }
-    }
-  },
-  renamePage: () => {
-    const uid = getCurrentPageUid();
-    if (!uid)
-      return;
-    const pageInfo = window.roamAlphaAPI?.data?.pull?.("[:node/title]", [":block/uid", uid]);
-    const currentTitle = pageInfo?.[":node/title"] || "";
-    const newTitle = promptUser("Enter new page title:", currentTitle);
-    if (!newTitle || newTitle === currentTitle)
-      return;
-    if (window.roamAlphaAPI?.data?.page?.update) {
-      window.roamAlphaAPI.data.page.update({ page: { uid, title: newTitle } });
-    }
-  },
-  openPageInSidebar: () => {
-    const uid = getCurrentPageUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
-      window.roamAlphaAPI.ui.rightSidebar.addWindow({
-        window: { type: "outline", "block-uid": uid }
-      });
-    }
-  },
-  showPageMentions: () => {
-    const uid = getCurrentPageUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
-      window.roamAlphaAPI.ui.rightSidebar.addWindow({
-        window: { type: "mentions", "block-uid": uid }
-      });
-    }
-  },
-  showPageGraph: () => {
-    const uid = getCurrentPageUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.rightSidebar?.addWindow) {
-      window.roamAlphaAPI.ui.rightSidebar.addWindow({
-        window: { type: "graph", "block-uid": uid }
-      });
-    }
-  },
-  // ==================== Toggle Operations ====================
-  toggleFold,
-  // ==================== Focus Operations ====================
-  focusFirstBlock: () => {
-    if (window.roamAlphaAPI?.ui?.mainWindow?.focusFirstBlock) {
-      window.roamAlphaAPI.ui.mainWindow.focusFirstBlock();
-    }
-  },
-  focusCurrentBlock: () => {
-    const uid = getSelectedBlockUid();
-    if (!uid)
-      return;
-    if (window.roamAlphaAPI?.ui?.setBlockFocusAndSelection) {
-      window.roamAlphaAPI.ui.setBlockFocusAndSelection({
-        location: { "block-uid": uid, "window-id": "main-window" }
-      });
-    }
-  },
-  // ==================== History ====================
-  undo: () => {
-    if (window.roamAlphaAPI?.data?.undo) {
-      window.roamAlphaAPI.data.undo();
-    } else {
-      undo();
-    }
-  },
-  redo: () => {
-    if (window.roamAlphaAPI?.data?.redo) {
-      window.roamAlphaAPI.data.redo();
-    } else {
-      redo();
-    }
-  },
-  // ==================== Help ====================
-  showHelpPanel
-};
-
-// src/settings.js
-var extensionAPIRef = null;
-var SETTING_SPACEMACS_ENABLED = "spacemacs-enabled";
-function setExtensionAPI(api) {
-  extensionAPIRef = api;
-}
-function isSpacemacsEnabled() {
-  if (!extensionAPIRef)
-    return false;
-  return extensionAPIRef.settings.get(SETTING_SPACEMACS_ENABLED) === true;
-}
 
 // src/keybindings.js
 var sequenceBuffer = "";
 var sequenceTimeout = null;
-var SEQUENCE_PREFIXES = ["g", "z", "d", "y"];
+var SEQUENCE_PREFIXES = ["g", "d"];
 var leaderConfig = DEFAULT_LEADER_CONFIG;
 var leaderState = {
   active: false,
   currentNode: leaderConfig,
   path: []
 };
-function setLeaderConfig(config) {
-  leaderConfig = config;
-  leaderState.currentNode = leaderConfig;
-}
 function enterLeaderMode() {
   leaderState.active = true;
   leaderState.currentNode = leaderConfig;
@@ -2218,7 +1439,7 @@ function handleKeydown(event) {
     enterLeaderMode();
     return;
   }
-  if (event.metaKey && !(event.shiftKey && (key === "k" || key === "j"))) {
+  if (event.metaKey) {
     return;
   }
   const sequence = buildSequence(key, event);
@@ -2261,8 +1482,6 @@ function clearSequence() {
 function matchCommand(sequence, mode, event) {
   const key = event.key.toLowerCase();
   const isNormal = mode === Mode.NORMAL;
-  const isVisual = mode === Mode.VISUAL;
-  const isNormalOrVisual = isNormal || isVisual;
   const sequencePrefix = SEQUENCE_PREFIXES.find((p) => sequence.startsWith(p + " "));
   if (isHelpPanelOpen()) {
     if (key === "escape" || event.key === "?") {
@@ -2277,18 +1496,8 @@ function matchCommand(sequence, mode, event) {
   if (isNormal) {
     if (sequence === "g g")
       return selectFirstBlock;
-    if (sequence === "g f")
-      return enterBlockHintMode;
-    if (sequence === "z z")
-      return centerCurrentBlock;
-    if (sequence === "z a")
-      return toggleFold;
-    if (sequence === "z r")
-      return expandReferences;
     if (sequence === "d d")
       return deleteBlock;
-    if (sequence === "y y")
-      return () => copySelectedBlock(mode);
     if (sequencePrefix) {
       return () => {
       };
@@ -2301,16 +1510,8 @@ function matchCommand(sequence, mode, event) {
       return selectBlockUp;
     if (key === "j" && !event.shiftKey && !event.ctrlKey)
       return selectBlockDown;
-    if (key === "h" && event.shiftKey)
-      return selectFirstVisibleBlock;
-    if (key === "l" && event.shiftKey)
-      return selectLastVisibleBlock;
     if (key === "g" && event.shiftKey)
       return selectLastBlock;
-    if (key === "u" && event.ctrlKey)
-      return selectManyBlocksUp;
-    if (key === "d" && event.ctrlKey)
-      return selectManyBlocksDown;
     if (key === "h" && !event.shiftKey)
       return selectPanelLeft;
     if (key === "l" && !event.shiftKey)
@@ -2323,20 +1524,12 @@ function matchCommand(sequence, mode, event) {
       return insertBlockBefore;
     if (key === "o" && !event.shiftKey)
       return insertBlockAfter;
-    if (key === "v" && !event.shiftKey)
+    if (key === "v" && event.shiftKey)
       return highlightSelectedBlock;
-    if (key === "p" && !event.shiftKey)
-      return paste;
-    if (key === "p" && event.shiftKey)
-      return pasteBefore;
-    if (key === "y" && !event.shiftKey && !event.altKey && !event.ctrlKey)
-      return () => copySelectedBlock(mode);
-    if (key === "y" && event.altKey)
-      return copySelectedBlockReference;
-    if (key === "y" && event.shiftKey)
-      return copySelectedBlockEmbed;
-    if (key === "d" && !event.ctrlKey)
-      return () => enterOrCutInVisualMode(mode);
+    if (key === "z" && !event.shiftKey && !event.ctrlKey)
+      return toggleFold;
+    if (key === "c" && !event.shiftKey && !event.ctrlKey)
+      return centerCurrentBlock;
     if (key === "u" && !event.ctrlKey)
       return undo;
     if (key === "r" && event.ctrlKey)
@@ -2349,10 +1542,6 @@ function matchCommand(sequence, mode, event) {
       return nextMatch;
     if (key === "n" && event.shiftKey && !event.ctrlKey)
       return previousMatch;
-    if (key === "f" && !event.shiftKey && !event.ctrlKey)
-      return () => enterPageHintMode(false);
-    if (key === "f" && event.shiftKey && !event.ctrlKey)
-      return () => enterPageHintMode(true);
     for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {
       if (key === DEFAULT_HINT_KEYS[i] && !event.shiftKey && !event.ctrlKey) {
         return () => clickHint(i);
@@ -2360,37 +1549,8 @@ function matchCommand(sequence, mode, event) {
       if (key === DEFAULT_HINT_KEYS[i] && event.shiftKey && !event.ctrlKey) {
         return () => shiftClickHint(i);
       }
-      if (key === DEFAULT_HINT_KEYS[i] && event.shiftKey && event.ctrlKey) {
-        return () => ctrlShiftClickHint(i);
-      }
     }
   }
-  if (isVisual) {
-    if (key === "k" && !event.shiftKey)
-      return selectBlockUp;
-    if (key === "j" && !event.shiftKey)
-      return selectBlockDown;
-    if (key === "k" && event.shiftKey)
-      return () => growHighlightUp(mode);
-    if (key === "j" && event.shiftKey)
-      return () => growHighlightDown(mode);
-    if (key === "y")
-      return () => copySelectedBlock(mode);
-    if (key === "d")
-      return () => enterOrCutInVisualMode(mode);
-  }
-  if (isNormalOrVisual) {
-    if (key === "y" && event.ctrlKey)
-      return scrollUp;
-    if (key === "e" && event.ctrlKey)
-      return scrollDown;
-  }
-  if (key === "k" && event.metaKey && event.shiftKey)
-    return moveBlockUp;
-  if (key === "j" && event.metaKey && event.shiftKey)
-    return moveBlockDown;
-  if (key === "w" && event.ctrlKey)
-    return closeSidebarPage;
   return null;
 }
 
@@ -2802,128 +1962,12 @@ function removeModeIndicator() {
   }
 }
 
-// src/user-config.js
-var CONFIG_PAGE_TITLE = "roam/js/vim-mode";
-function deepMerge(target, source) {
-  const result = { ...target };
-  for (const key in source) {
-    if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key]) && typeof source[key] !== "function") {
-      if (target[key] && typeof target[key] === "object" && !Array.isArray(target[key])) {
-        result[key] = deepMerge(target[key], source[key]);
-      } else {
-        result[key] = source[key];
-      }
-    } else {
-      result[key] = source[key];
-    }
-  }
-  return result;
-}
-function getPageUidByTitle(title) {
-  if (!window.roamAlphaAPI)
-    return null;
-  const result = window.roamAlphaAPI.q(`
-        [:find ?uid
-         :where
-         [?e :node/title "${title}"]
-         [?e :block/uid ?uid]]
-    `);
-  return result?.[0]?.[0] || null;
-}
-function getPageBlocks(pageUid) {
-  if (!window.roamAlphaAPI || !pageUid)
-    return [];
-  const result = window.roamAlphaAPI.q(`
-        [:find ?string ?order
-         :where
-         [?page :block/uid "${pageUid}"]
-         [?page :block/children ?child]
-         [?child :block/string ?string]
-         [?child :block/order ?order]]
-    `);
-  return result.sort((a, b) => a[1] - b[1]).map((r) => r[0]);
-}
-function extractJavaScriptCode(blockString) {
-  const codeBlockMatch = blockString.match(/```(?:javascript|js)\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    return codeBlockMatch[1].trim();
-  }
-  return null;
-}
-function evaluateConfigCode(code) {
-  try {
-    const fn = new Function(code);
-    const result = fn();
-    return result;
-  } catch (error) {
-    console.error("[Roam Vim Mode] Error evaluating user config:", error);
-    return null;
-  }
-}
-async function loadUserConfig() {
-  try {
-    if (!window.roamAlphaAPI) {
-      console.log("[Roam Vim Mode] roamAlphaAPI not available, skipping user config");
-      return null;
-    }
-    const pageUid = getPageUidByTitle(CONFIG_PAGE_TITLE);
-    if (!pageUid) {
-      console.log(`[Roam Vim Mode] Config page "${CONFIG_PAGE_TITLE}" not found`);
-      return null;
-    }
-    const blocks = getPageBlocks(pageUid);
-    if (blocks.length === 0) {
-      console.log("[Roam Vim Mode] Config page is empty");
-      return null;
-    }
-    for (const block of blocks) {
-      const code = extractJavaScriptCode(block);
-      if (code) {
-        console.log("[Roam Vim Mode] Found user config code");
-        const config = evaluateConfigCode(code);
-        if (config && typeof config === "object") {
-          console.log("[Roam Vim Mode] User config loaded successfully");
-          return config;
-        }
-      }
-    }
-    console.log("[Roam Vim Mode] No valid JavaScript config found");
-    return null;
-  } catch (error) {
-    console.error("[Roam Vim Mode] Error loading user config:", error);
-    return null;
-  }
-}
-function mergeConfigs(defaultConfig, userConfig) {
-  if (!userConfig) {
-    return defaultConfig;
-  }
-  const mergedKeys = deepMerge(defaultConfig.keys || {}, userConfig);
-  return {
-    ...defaultConfig,
-    keys: mergedKeys
-  };
-}
-
 // src/extension.js
 var disconnectHandlers = [];
 var keydownHandler = null;
-async function loadAndApplyUserConfig() {
-  try {
-    const userConfig = await loadUserConfig();
-    if (userConfig) {
-      const mergedConfig = mergeConfigs(DEFAULT_LEADER_CONFIG, userConfig);
-      setLeaderConfig(mergedConfig);
-      console.log("[Roam Vim Mode] User config applied");
-    }
-  } catch (error) {
-    console.error("[Roam Vim Mode] Failed to load user config:", error);
-  }
-}
 function startVimMode() {
   waitForSelectorToExist(Selectors.mainContent).then(async () => {
     await delay(300);
-    await loadAndApplyUserConfig();
     disconnectHandlers = [
       RoamEvent.onEditBlock((blockElement) => {
         VimRoamPanel.fromBlock(blockElement).select();

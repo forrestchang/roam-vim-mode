@@ -4,7 +4,7 @@
 
 import { DEFAULT_HINT_KEYS, HINT_CHARS, PAGE_HINT_CSS_CLASS, Selectors } from './constants.js';
 import { Mode, getMode } from './mode.js';
-import { pageHintState, hidePageHints, filterPageHints, enterPageHintMode, enterBlockHintMode } from './page-hints.js';
+import { pageHintState, hidePageHints, filterPageHints } from './page-hints.js';
 import { showHelpPanel, hideHelpPanel, isHelpPanelOpen } from './help-panel.js';
 import { showWhichKey, showWhichKeyImmediate, hideWhichKey } from './which-key.js';
 import { DEFAULT_LEADER_CONFIG, LEADER_COMMAND_REGISTRY } from './leader-config.js';
@@ -14,14 +14,8 @@ import {
     returnToNormalMode,
     selectBlockUp,
     selectBlockDown,
-    selectFirstVisibleBlock,
-    selectLastVisibleBlock,
     selectFirstBlock,
     selectLastBlock,
-    selectManyBlocksUp,
-    selectManyBlocksDown,
-    scrollUp,
-    scrollDown,
     centerCurrentBlock,
     insertBlockAfter,
     editBlock,
@@ -29,26 +23,13 @@ import {
     insertBlockBefore,
     selectPanelLeft,
     selectPanelRight,
-    closeSidebarPage,
     highlightSelectedBlock,
-    growHighlightUp,
-    growHighlightDown,
-    paste,
-    pasteBefore,
-    copySelectedBlock,
-    copySelectedBlockReference,
-    copySelectedBlockEmbed,
-    enterOrCutInVisualMode,
     undo,
     redo,
-    moveBlockUp,
-    moveBlockDown,
     clickHint,
     shiftClickHint,
-    ctrlShiftClickHint,
     toggleFold,
     deleteBlock,
-    expandReferences,
 } from './commands.js';
 
 // ============== Sequence State ==============
@@ -56,7 +37,7 @@ let sequenceBuffer = '';
 let sequenceTimeout = null;
 
 // Keys that start multi-key sequences - when pressed, wait for next key instead of triggering single-key commands
-const SEQUENCE_PREFIXES = ['g', 'z', 'd', 'y'];
+const SEQUENCE_PREFIXES = ['g', 'd'];
 
 // ============== Leader Key State ==============
 let leaderConfig = DEFAULT_LEADER_CONFIG;
@@ -213,8 +194,8 @@ export function handleKeydown(event) {
         return;
     }
 
-    // Let native Cmd shortcuts pass through (except our specific Cmd+Shift+K/J for block movement)
-    if (event.metaKey && !(event.shiftKey && (key === 'k' || key === 'j'))) {
+    // Let native Cmd shortcuts pass through
+    if (event.metaKey) {
         return;
     }
 
@@ -269,8 +250,6 @@ export function clearSequence() {
 function matchCommand(sequence, mode, event) {
     const key = event.key.toLowerCase();
     const isNormal = mode === Mode.NORMAL;
-    const isVisual = mode === Mode.VISUAL;
-    const isNormalOrVisual = isNormal || isVisual;
 
     // Check if we started a sequence with a prefix key (e.g., pressed 'g' or 'z')
     const sequencePrefix = SEQUENCE_PREFIXES.find(p => sequence.startsWith(p + ' '));
@@ -292,12 +271,7 @@ function matchCommand(sequence, mode, event) {
     if (isNormal) {
         // Multi-key sequences (must be checked before single-key commands)
         if (sequence === 'g g') return selectFirstBlock;
-        if (sequence === 'g f') return enterBlockHintMode;
-        if (sequence === 'z z') return centerCurrentBlock;
-        if (sequence === 'z a') return toggleFold;
-        if (sequence === 'z r') return expandReferences;
         if (sequence === 'd d') return deleteBlock;
-        if (sequence === 'y y') return () => copySelectedBlock(mode);
 
         // If we're in a sequence (e.g., pressed 'g' or 'z') but didn't match above,
         // block all other commands and wait for timeout to clear
@@ -313,11 +287,7 @@ function matchCommand(sequence, mode, event) {
         // Navigation
         if (key === 'k' && !event.shiftKey && !event.ctrlKey) return selectBlockUp;
         if (key === 'j' && !event.shiftKey && !event.ctrlKey) return selectBlockDown;
-        if (key === 'h' && event.shiftKey) return selectFirstVisibleBlock;
-        if (key === 'l' && event.shiftKey) return selectLastVisibleBlock;
         if (key === 'g' && event.shiftKey) return selectLastBlock;
-        if (key === 'u' && event.ctrlKey) return selectManyBlocksUp;
-        if (key === 'd' && event.ctrlKey) return selectManyBlocksDown;
 
         // Panel navigation
         if (key === 'h' && !event.shiftKey) return selectPanelLeft;
@@ -329,16 +299,12 @@ function matchCommand(sequence, mode, event) {
         if (key === 'o' && event.shiftKey) return insertBlockBefore;
         if (key === 'o' && !event.shiftKey) return insertBlockAfter;
 
-        // Visual mode
-        if (key === 'v' && !event.shiftKey) return highlightSelectedBlock;
+        // Visual mode (line-level)
+        if (key === 'v' && event.shiftKey) return highlightSelectedBlock;
 
-        // Clipboard
-        if (key === 'p' && !event.shiftKey) return paste;
-        if (key === 'p' && event.shiftKey) return pasteBefore;
-        if (key === 'y' && !event.shiftKey && !event.altKey && !event.ctrlKey) return () => copySelectedBlock(mode);
-        if (key === 'y' && event.altKey) return copySelectedBlockReference;
-        if (key === 'y' && event.shiftKey) return copySelectedBlockEmbed;
-        if (key === 'd' && !event.ctrlKey) return () => enterOrCutInVisualMode(mode);
+        // View commands
+        if (key === 'z' && !event.shiftKey && !event.ctrlKey) return toggleFold;
+        if (key === 'c' && !event.shiftKey && !event.ctrlKey) return centerCurrentBlock;
 
         // History
         if (key === 'u' && !event.ctrlKey) return undo;
@@ -352,12 +318,7 @@ function matchCommand(sequence, mode, event) {
         if (key === 'n' && !event.shiftKey && !event.ctrlKey) return nextMatch;
         if (key === 'n' && event.shiftKey && !event.ctrlKey) return previousMatch;
 
-        // Page hints mode (Vimium-style)
-        // f = direct navigation, F (shift+f) = open in sidebar
-        if (key === 'f' && !event.shiftKey && !event.ctrlKey) return () => enterPageHintMode(false);
-        if (key === 'f' && event.shiftKey && !event.ctrlKey) return () => enterPageHintMode(true);
-
-        // Hint keys (in normal mode only)
+        // Hint keys (click links within block)
         for (let i = 0; i < DEFAULT_HINT_KEYS.length; i++) {
             if (key === DEFAULT_HINT_KEYS[i] && !event.shiftKey && !event.ctrlKey) {
                 return () => clickHint(i);
@@ -365,34 +326,8 @@ function matchCommand(sequence, mode, event) {
             if (key === DEFAULT_HINT_KEYS[i] && event.shiftKey && !event.ctrlKey) {
                 return () => shiftClickHint(i);
             }
-            if (key === DEFAULT_HINT_KEYS[i] && event.shiftKey && event.ctrlKey) {
-                return () => ctrlShiftClickHint(i);
-            }
         }
     }
-
-    // Visual mode commands
-    if (isVisual) {
-        if (key === 'k' && !event.shiftKey) return selectBlockUp;
-        if (key === 'j' && !event.shiftKey) return selectBlockDown;
-        if (key === 'k' && event.shiftKey) return () => growHighlightUp(mode);
-        if (key === 'j' && event.shiftKey) return () => growHighlightDown(mode);
-        if (key === 'y') return () => copySelectedBlock(mode);
-        if (key === 'd') return () => enterOrCutInVisualMode(mode);
-    }
-
-    // Normal or Visual mode commands
-    if (isNormalOrVisual) {
-        if (key === 'y' && event.ctrlKey) return scrollUp;
-        if (key === 'e' && event.ctrlKey) return scrollDown;
-    }
-
-    // Block manipulation (normal and insert)
-    if (key === 'k' && event.metaKey && event.shiftKey) return moveBlockUp;
-    if (key === 'j' && event.metaKey && event.shiftKey) return moveBlockDown;
-
-    // Close sidebar page
-    if (key === 'w' && event.ctrlKey) return closeSidebarPage;
 
     return null;
 }
