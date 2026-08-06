@@ -5,10 +5,13 @@
 import { Selectors, PANEL_CSS_CLASS, PANEL_SELECTOR, SCROLL_PADDING } from './constants.js';
 import { assumeExists, relativeItem, clamp, findLast } from './utils.js';
 import { Roam } from './roam.js';
+import { debugLog } from './logger.js';
 
 // ============== Panel State ==============
 export const panelState = {
+    /** @type {Element[]} main panel first, then sidebar panels in visual order. */
     panelOrder: [],
+    /** @type {Map<Element, VimRoamPanel>} */
     panels: new Map(),
     focusedPanel: 0,
 };
@@ -24,15 +27,15 @@ export class RoamBlock {
     }
 
     async edit() {
-        await Roam.activateBlock(this.element);
+        return Roam.activateBlock(this.element);
     }
 
     async toggleFold() {
-        await Roam.toggleFoldBlock(this.element);
+        return Roam.toggleFoldBlock(this.element);
     }
 
     static get(blockId) {
-        return new RoamBlock(assumeExists(document.getElementById(blockId)));
+        return new RoamBlock(assumeExists(document.getElementById(blockId), `No block with id ${blockId}`));
     }
 
     static selected() {
@@ -53,86 +56,154 @@ export class VimRoamPanel {
     }
 
     relativeBlockId(blockId, blocksToJump) {
-        return relativeItem(this.blocks(), this.indexOf(blockId), blocksToJump).id;
+        return relativeItem(this.blocks(), this.indexOf(blockId), blocksToJump)?.id ?? blockId;
     }
 
     indexOf(blockId) {
         return this.blocks().findIndex(({ id }) => id === blockId);
     }
 
+    /**
+     * The currently selected block id, re-resolving it if the block has gone
+     * away (Roam re-rendered, page changed, block deleted).
+     *
+     * Deliberately free of side effects beyond updating internal state — the
+     * previous version scrolled the page from inside a property getter.
+     */
     get selectedBlockId() {
-        if (!this._selectedBlockId || !document.getElementById(this._selectedBlockId)) {
-            const blocks = this.blocks();
-            this.blockIndex = clamp(this.blockIndex, 0, blocks.length - 1);
-            if (blocks.length > 0) {
-                this.selectBlock(blocks[this.blockIndex].id);
-            }
+        if (this._selectedBlockId && document.getElementById(this._selectedBlockId)) {
+            return this._selectedBlockId;
         }
+
+        const blocks = this.blocks();
+        if (blocks.length === 0) {
+            this._selectedBlockId = null;
+            this.blockIndex = 0;
+            return null;
+        }
+
+        this.blockIndex = clamp(this.blockIndex, 0, blocks.length - 1);
+        this._selectedBlockId = blocks[this.blockIndex].id;
         return this._selectedBlockId;
     }
 
     selectedBlock() {
-        return RoamBlock.get(this.selectedBlockId);
+        const blockId = this.selectedBlockId;
+        if (!blockId) {
+            throw new Error('This panel has no blocks to select');
+        }
+        return RoamBlock.get(blockId);
     }
 
-    selectBlock(blockId) {
+    /** @param {{scroll?: boolean}} [options] */
+    selectBlock(blockId, { scroll = true } = {}) {
+        if (!blockId) return;
+        const index = this.indexOf(blockId);
+        if (index === -1) return;
+
         this._selectedBlockId = blockId;
-        this.blockIndex = this.indexOf(blockId);
-        this.scrollUntilBlockIsVisible(this.selectedBlock().element);
+        this.blockIndex = index;
+
+        if (scroll) {
+            const element = document.getElementById(blockId);
+            if (element) {
+                this.scrollUntilBlockIsVisible(element);
+            }
+        }
     }
 
     selectRelativeBlock(blocksToJump) {
-        const block = this.selectedBlock().element;
-        this.selectBlock(this.relativeBlockId(block.id, blocksToJump));
+        const blockId = this.selectedBlockId;
+        if (!blockId) return;
+        this.selectBlock(this.relativeBlockId(blockId, blocksToJump));
     }
 
     selectFirstBlock() {
+        const first = this.firstBlock();
+        if (!first) return;
         this.element.scrollTop = 0;
-        this.selectBlock(this.firstBlock().id);
+        this.selectBlock(first.id);
     }
 
     selectLastBlock() {
-        this.selectBlock(this.lastBlock().id);
+        const last = this.lastBlock();
+        if (last) this.selectBlock(last.id);
     }
 
     selectLastVisibleBlock() {
-        this.selectBlock(this.lastVisibleBlock().id);
+        const last = this.lastVisibleBlock();
+        if (last) this.selectBlock(last.id);
     }
 
     selectFirstVisibleBlock() {
-        this.selectBlock(this.firstVisibleBlock().id);
+        const first = this.firstVisibleBlock();
+        if (first) this.selectBlock(first.id);
     }
 
     scrollUntilBlockIsVisible(block) {
-        block.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+        block?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     }
 
+    /**
+     * The first block in the panel.
+     *
+     * Uses `blocks()` rather than a `.roam-block` query so that a block which is
+     * currently being edited (and therefore rendered as a `.rm-block-input`
+     * textarea) still counts — otherwise `gg` skipped past it.
+     *
+     * @returns {Element|undefined}
+     */
     firstBlock() {
-        return assumeExists(this.element.querySelector(Selectors.block));
+        return this.blocks()[0];
     }
 
+    /** @returns {Element|undefined} */
     lastBlock() {
         const blocks = this.blocks();
-        return assumeExists(blocks[blocks.length - 1]);
+        return blocks[blocks.length - 1];
     }
 
     select() {
-        panelState.focusedPanel = panelState.panelOrder.indexOf(this.element);
+        const index = panelState.panelOrder.indexOf(this.element);
+        if (index === -1) {
+            // The panel isn't tagged yet (e.g. a sidebar page that just opened).
+            // Re-tag and retry rather than storing -1, which used to poison
+            // `panelState.panels` with an element-less panel.
+            VimRoamPanel.updateSidePanels();
+            const retryIndex = panelState.panelOrder.indexOf(this.element);
+            if (retryIndex === -1) return;
+            panelState.focusedPanel = retryIndex;
+        } else {
+            panelState.focusedPanel = index;
+        }
         this.element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
+    /** @returns {VimRoamPanel} @throws if no panel is currently mounted */
     static selected() {
-        panelState.focusedPanel = Math.min(panelState.focusedPanel, panelState.panelOrder.length - 1);
-        return VimRoamPanel.get(panelState.panelOrder[panelState.focusedPanel]);
+        if (panelState.panelOrder.length === 0) {
+            VimRoamPanel.updateSidePanels();
+        }
+        const element = panelState.panelOrder[
+            clamp(panelState.focusedPanel, 0, panelState.panelOrder.length - 1)
+        ];
+        return VimRoamPanel.get(assumeExists(element, 'No Roam panel is currently mounted'));
     }
 
     static fromBlock(blockElement) {
-        return VimRoamPanel.get(assumeExists(blockElement.closest(PANEL_SELECTOR)));
+        let panelElement = blockElement.closest(PANEL_SELECTOR);
+        if (!panelElement) {
+            // A freshly opened sidebar page hasn't been tagged yet.
+            VimRoamPanel.updateSidePanels();
+            panelElement = blockElement.closest(PANEL_SELECTOR);
+        }
+        return panelElement ? VimRoamPanel.get(panelElement) : null;
     }
 
     static at(panelIndex) {
-        panelIndex = clamp(panelIndex, 0, panelState.panelOrder.length - 1);
-        return VimRoamPanel.get(panelState.panelOrder[panelIndex]);
+        if (panelState.panelOrder.length === 0) return null;
+        const element = panelState.panelOrder[clamp(panelIndex, 0, panelState.panelOrder.length - 1)];
+        return element ? VimRoamPanel.get(element) : null;
     }
 
     static mainPanel() {
@@ -150,19 +221,43 @@ export class VimRoamPanel {
     static updateSidePanels() {
         tagPanels();
         panelState.panelOrder = Array.from(document.querySelectorAll(PANEL_SELECTOR));
-        panelState.panels = new Map(panelState.panelOrder.map(el => [el, VimRoamPanel.get(el)]));
+        // Rebuild the map from the previous one so panels that survived the
+        // re-render keep their selected block, and detached ones get dropped.
+        const previous = panelState.panels;
+        panelState.panels = new Map(
+            panelState.panelOrder.map(el => [el, previous.get(el) ?? new VimRoamPanel(el)])
+        );
+        panelState.focusedPanel = clamp(
+            panelState.focusedPanel,
+            0,
+            Math.max(0, panelState.panelOrder.length - 1)
+        );
+        debugLog('panel', `${panelState.panelOrder.length} panel(s), focused #${panelState.focusedPanel}`);
     }
 
-    static get(panelId) {
-        if (!panelState.panels.has(panelId)) {
-            panelState.panels.set(panelId, new VimRoamPanel(panelId));
+    /** @param {Element} panelElement */
+    static get(panelElement) {
+        assumeExists(panelElement, 'Cannot get a panel without an element');
+        let panel = panelState.panels.get(panelElement);
+        if (!panel) {
+            panel = new VimRoamPanel(panelElement);
+            panelState.panels.set(panelElement, panel);
         }
-        return assumeExists(panelState.panels.get(panelId));
+        return panel;
+    }
+
+    static reset() {
+        panelState.panelOrder = [];
+        panelState.panels = new Map();
+        panelState.focusedPanel = 0;
     }
 
     scrollAndReselectBlockToStayVisible(scrollPx) {
         this.scroll(scrollPx);
-        this.selectClosestVisibleBlock(this.selectedBlock().element);
+        const blockId = this.selectedBlockId;
+        if (blockId) {
+            this.selectClosestVisibleBlock(document.getElementById(blockId));
+        }
     }
 
     scroll(scrollPx) {
@@ -170,6 +265,7 @@ export class VimRoamPanel {
     }
 
     selectClosestVisibleBlock(block) {
+        if (!block) return;
         const scrollOverflow = blockScrollOverflow(block);
         if (scrollOverflow < 0) {
             this.selectFirstVisibleBlock();
@@ -179,12 +275,14 @@ export class VimRoamPanel {
         }
     }
 
+    /** @returns {Element|undefined} */
     firstVisibleBlock() {
-        return assumeExists(this.blocks().find(blockIsVisible), 'Could not find any visible block');
+        return this.blocks().find(blockIsVisible);
     }
 
+    /** @returns {Element|undefined} */
     lastVisibleBlock() {
-        return assumeExists(findLast(this.blocks(), blockIsVisible), 'Could not find any visible block');
+        return findLast(this.blocks(), blockIsVisible);
     }
 }
 
@@ -192,7 +290,9 @@ export class VimRoamPanel {
 export function blockScrollOverflow(block) {
     const { top, height, width } = block.getBoundingClientRect();
     const bottom = top + height;
-    const scaledPadding = (width / block.offsetWidth) * SCROLL_PADDING;
+    // offsetWidth is 0 for detached/hidden blocks; guard against dividing by it.
+    const scale = block.offsetWidth ? width / block.offsetWidth : 1;
+    const scaledPadding = scale * SCROLL_PADDING;
 
     const panel = block.closest(PANEL_SELECTOR);
     if (!panel) return 0;

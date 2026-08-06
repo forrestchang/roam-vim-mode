@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # `no-undef` catches Roam-facing typos the unit tests structurally cannot:
+      # those paths need a live DOM and roamAlphaAPI to execute at all.
+      - run: npm run lint
+
+      - run: npm test
+
+      - run: npm run build
+
+      # `extension.js` is the artifact Roam Depot loads, so it is committed.
+      # Fail loudly if it has drifted from src/ instead of shipping stale code.
+      - name: Verify the committed bundle is up to date
+        run: |
+          if ! git diff --quiet -- extension.js; then
+            echo "::error::extension.js is out of date. Run 'npm run build' and commit the result."
+            git diff --stat -- extension.js
+            exit 1
+          fi

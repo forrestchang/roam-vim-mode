@@ -1,26 +1,59 @@
 /**
  * Vim commands for Roam Vim Mode
+ *
+ * Every exported command is reachable from a keybinding or the leader menu —
+ * see `keybindings.js` and `leader-config.js`.
  */
 
 import { Selectors } from './constants.js';
-import { delay, Keyboard, Mouse, repeatAsync, KEY_TO_CODE } from './utils.js';
-import { Roam, RoamHighlight, copyBlockReference, copyBlockEmbed } from './roam.js';
+import { delay, Keyboard, Mouse, repeatAsync } from './utils.js';
+import { Roam, RoamHighlight, copyBlockReference, copyBlockEmbed, writeToClipboard } from './roam.js';
 import { RoamBlock, VimRoamPanel } from './panel.js';
-import { Mode } from './mode.js';
-import { blurEverything, getHint, updateVimView } from './view.js';
+import { Mode, getMode } from './mode.js';
+import { getBlockUid, moveBlock, pullBlock } from './roam-api.js';
+import { debugLog, logError, warnFallback } from './logger.js';
+import { blurEverything, getHint, updateVimView, viewMoreDailyLogIfPossible } from './view.js';
 
-// ============== Internal State ==============
-export let yankRegister = '';
-
-export function setYankRegister(value) {
-    yankRegister = value;
-}
+/** How many synthetic Escapes to spend converging on NORMAL before giving up. */
+const MAX_NORMAL_MODE_NUDGES = 6;
 
 // ============== Return to Normal Mode ==============
+/**
+ * Escape always lands in NORMAL, in one press.
+ *
+ * Roam answers Escape-while-editing by turning the block into a blue selection —
+ * its own intermediate step, which reads as VISUAL mode here. If Roam's handler
+ * wins the race with ours, we dismiss that selection so the user doesn't have to
+ * press Escape twice.
+ */
 export async function returnToNormalMode() {
     blurEverything();
+    // Roam sometimes re-focuses the textarea within the same tick; blur again
+    // once the microtask queue has drained.
     await delay(0);
     blurEverything();
+
+    // Then converge: whatever intermediate state Roam lands in — still editing,
+    // or a leftover blue block selection — another Escape moves it one step
+    // closer to NORMAL. The events are marked synthetic, so our own handler
+    // ignores them and this can't recurse.
+    for (let attempt = 0; attempt < MAX_NORMAL_MODE_NUDGES; attempt++) {
+        await delay(16);
+
+        const mode = getMode();
+        if (mode === Mode.NORMAL) {
+            debugLog('commands', `returnToNormalMode: reached NORMAL after ${attempt} nudge(s)`);
+            return;
+        }
+
+        debugLog('commands', `returnToNormalMode: still ${mode}, nudging`, {
+            attempt,
+            blockSelections: document.querySelectorAll(Selectors.highlight).length,
+        });
+        await Keyboard.pressEsc();
+    }
+
+    logError('commands', `returnToNormalMode: gave up, mode is still ${getMode()}`);
 }
 
 // ============== RoamVim Core ==============
@@ -30,20 +63,19 @@ export const RoamVim = {
         if (mode === Mode.NORMAL) {
             VimRoamPanel.selected().selectRelativeBlock(blocksToJump);
             updateVimView();
+            return;
         }
         if (mode === Mode.VISUAL) {
             await repeatAsync(Math.abs(blocksToJump), () =>
-                Keyboard.simulateKey(blocksToJump > 0 ? Keyboard.DOWN_ARROW : Keyboard.UP_ARROW, 0, { shiftKey: true })
+                Keyboard.pressArrow(blocksToJump > 0 ? 'down' : 'up', { shiftKey: true })
             );
-            VimRoamPanel.selected().scrollUntilBlockIsVisible(
-                blocksToJump > 0 ? RoamHighlight.last() : RoamHighlight.first()
-            );
+            const edge = blocksToJump > 0 ? RoamHighlight.last() : RoamHighlight.first();
+            if (edge) {
+                VimRoamPanel.selected().scrollUntilBlockIsVisible(edge);
+            }
         }
     },
 };
-
-// Import getMode here to avoid circular dependency
-import { getMode } from './mode.js';
 
 // ============== Navigation Commands ==============
 export async function selectBlockUp() {
@@ -54,71 +86,46 @@ export async function selectBlockDown() {
     await RoamVim.jumpBlocksInFocusedPanel(1);
 }
 
-export async function selectFirstVisibleBlock() {
-    VimRoamPanel.selected().selectFirstVisibleBlock();
-    updateVimView();
-}
-
-export async function selectLastVisibleBlock() {
-    VimRoamPanel.selected().selectLastVisibleBlock();
-    updateVimView();
-}
-
-export async function selectFirstBlock() {
+export function selectFirstBlock() {
     VimRoamPanel.selected().selectFirstBlock();
     updateVimView();
 }
 
-export async function selectLastBlock() {
+export function selectLastBlock() {
     VimRoamPanel.selected().selectLastBlock();
     updateVimView();
+    // Reaching the bottom is the one moment where nudging Roam to load more of
+    // the daily log is what the user actually wants.
+    viewMoreDailyLogIfPossible();
 }
 
-export async function selectManyBlocksUp() {
-    await RoamVim.jumpBlocksInFocusedPanel(-8);
-}
-
-export async function selectManyBlocksDown() {
-    await RoamVim.jumpBlocksInFocusedPanel(8);
-}
-
-export async function scrollUp() {
-    VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(-50);
-    updateVimView();
-}
-
-export async function scrollDown() {
-    VimRoamPanel.selected().scrollAndReselectBlockToStayVisible(50);
-    updateVimView();
-}
-
-export async function centerCurrentBlock() {
+export function centerCurrentBlock() {
     const panel = VimRoamPanel.selected();
     const block = panel.selectedBlock().element;
 
     const panelRect = panel.element.getBoundingClientRect();
     const blockRect = block.getBoundingClientRect();
 
-    // Calculate where the block's center is relative to the panel's visible area
-    const blockCenterRelativeToPanel = (blockRect.top + blockRect.height / 2) - panelRect.top;
+    // How far the block's centre sits from the panel's centre.
+    const blockCenterRelativeToPanel = blockRect.top + blockRect.height / 2 - panelRect.top;
     const panelCenter = panelRect.height / 2;
 
-    // Calculate how much we need to scroll to center the block
-    const scrollAdjustment = blockCenterRelativeToPanel - panelCenter;
-    panel.element.scrollTop += scrollAdjustment;
+    panel.element.scrollTop += blockCenterRelativeToPanel - panelCenter;
 
     updateVimView();
 }
 
 // ============== Insert Commands ==============
 export async function insertBlockAfter() {
-    await Roam.activateBlock(RoamBlock.selected().element);
-    await Roam.createBlockBelow();
+    await Roam.createBlockBelow(RoamBlock.selected().element);
+}
+
+export async function insertBlockBefore() {
+    await Roam.createBlockAbove(RoamBlock.selected().element);
 }
 
 export async function editBlock() {
-    await Roam.activateBlock(RoamBlock.selected().element);
-    await Roam.moveCursorToStart();
+    await Roam.activateBlock(RoamBlock.selected().element, { start: 0 });
 }
 
 export async function editBlockFromEnd() {
@@ -126,20 +133,14 @@ export async function editBlockFromEnd() {
     await Roam.moveCursorToEnd();
 }
 
-export async function insertBlockBefore() {
-    await Roam.activateBlock(RoamBlock.selected().element);
-    await Roam.moveCursorToStart();
-    await Keyboard.pressEnter();
-}
-
 // ============== Panel Commands ==============
 export function selectPanelLeft() {
-    VimRoamPanel.previousPanel().select();
+    VimRoamPanel.previousPanel()?.select();
     updateVimView();
 }
 
 export function selectPanelRight() {
-    VimRoamPanel.nextPanel().select();
+    VimRoamPanel.nextPanel()?.select();
     updateVimView();
 }
 
@@ -153,125 +154,67 @@ export function closeSidebarPage() {
 }
 
 // ============== Visual Commands ==============
-export function highlightSelectedBlock() {
-    Roam.highlight(RoamBlock.selected().element);
-}
-
-export async function growHighlightUp(mode) {
-    if (mode === Mode.NORMAL) {
-        await Roam.highlight(RoamBlock.selected().element);
-    }
-    await Keyboard.simulateKey(Keyboard.UP_ARROW, 0, { shiftKey: true });
-}
-
-export async function growHighlightDown(mode) {
-    if (mode === Mode.NORMAL) {
-        await Roam.highlight(RoamBlock.selected().element);
-    }
-    await Keyboard.simulateKey(Keyboard.DOWN_ARROW, 0, { shiftKey: true });
+export async function highlightSelectedBlock() {
+    await Roam.highlight(RoamBlock.selected().element);
 }
 
 // ============== Clipboard Commands ==============
-async function getBlockText(blockElement) {
-    await Roam.activateBlock(blockElement);
-    const textarea = Roam.getRoamBlockInput();
-    if (textarea) {
-        return textarea.value;
-    }
-    return '';
-}
-
-export async function cutAndGoBackToNormal() {
-    const textarea = Roam.getRoamBlockInput();
-    if (textarea) {
-        yankRegister = textarea.value;
-    }
-    document.execCommand('cut');
-    await delay(0);
-    await returnToNormalMode();
-}
-
-export async function paste() {
-    await insertBlockAfter();
-    if (yankRegister) {
-        const textarea = Roam.getRoamBlockInput();
-        if (textarea) {
-            textarea.value = yankRegister;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    } else {
-        document.execCommand('paste');
-    }
-    await returnToNormalMode();
-}
-
-export async function pasteBefore() {
-    await RoamVim.jumpBlocksInFocusedPanel(-1);
-    await insertBlockAfter();
-    if (yankRegister) {
-        const textarea = Roam.getRoamBlockInput();
-        if (textarea) {
-            textarea.value = yankRegister;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    } else {
-        document.execCommand('paste');
-    }
-    await returnToNormalMode();
-}
-
-export async function copySelectedBlock(mode) {
-    const blockElement = RoamBlock.selected().element;
-    const text = await getBlockText(blockElement);
-    yankRegister = text;
-    try {
-        await navigator.clipboard.writeText(text);
-    } catch (e) {
-        document.execCommand('copy');
-    }
+export async function copySelectedBlock() {
+    const text = await Roam.getBlockText(RoamBlock.selected().element);
+    await writeToClipboard(text);
     await returnToNormalMode();
 }
 
 export function copySelectedBlockReference() {
-    copyBlockReference(VimRoamPanel.selected().selectedBlock().id);
+    return copyBlockReference(VimRoamPanel.selected().selectedBlockId);
 }
 
 export function copySelectedBlockEmbed() {
-    copyBlockEmbed(VimRoamPanel.selected().selectedBlock().id);
-}
-
-export async function enterOrCutInVisualMode(mode) {
-    if (mode === Mode.NORMAL) {
-        return Roam.highlight(RoamBlock.selected().element);
-    }
-    const highlightedBlock = RoamHighlight.first();
-    if (highlightedBlock) {
-        const text = await getBlockText(highlightedBlock);
-        yankRegister = text;
-    }
-    await cutAndGoBackToNormal();
+    return copyBlockEmbed(VimRoamPanel.selected().selectedBlockId);
 }
 
 // ============== History Commands ==============
 export async function undo() {
-    await Keyboard.simulateKey(KEY_TO_CODE['z'], 0, { key: 'z', metaKey: true });
+    await Roam.undo();
     await returnToNormalMode();
 }
 
 export async function redo() {
-    await Keyboard.simulateKey(KEY_TO_CODE['z'], 0, { key: 'z', shiftKey: true, metaKey: true });
+    await Roam.redo();
     await returnToNormalMode();
 }
 
 // ============== Block Manipulation Commands ==============
+/** Reorder the selected block among its siblings. `offset` is -1 (up) or +1 (down). */
+async function reorderSelectedBlock(offset) {
+    const element = RoamBlock.selected().element;
+
+    try {
+        const uid = getBlockUid(element);
+        const block = uid ? pullBlock(uid) : null;
+
+        if (block?.parentUid) {
+            const order = Math.max(0, block.order + offset);
+            if (order === block.order) return;
+            await moveBlock({ uid, parentUid: block.parentUid, order });
+            updateVimView();
+            return;
+        }
+    } catch (error) {
+        warnFallback('moveBlock via roamAlphaAPI failed', error);
+    }
+
+    // Fallback: Roam's own move shortcut, with the platform's command modifier.
+    await Roam.activateBlock(element);
+    await Keyboard.simulateKeyCombo(offset < 0 ? 'ArrowUp' : 'ArrowDown', { shiftKey: true });
+}
+
 export async function moveBlockUp() {
-    RoamBlock.selected().edit();
-    await Keyboard.simulateKey(Keyboard.UP_ARROW, 0, { metaKey: true, shiftKey: true });
+    await reorderSelectedBlock(-1);
 }
 
 export async function moveBlockDown() {
-    RoamBlock.selected().edit();
-    await Keyboard.simulateKey(Keyboard.DOWN_ARROW, 0, { metaKey: true, shiftKey: true });
+    await reorderSelectedBlock(1);
 }
 
 // ============== Hint Commands ==============
@@ -289,35 +232,23 @@ export function shiftClickHint(n) {
     }
 }
 
-export function ctrlShiftClickHint(n) {
-    const hint = getHint(n);
-    if (hint) {
-        Mouse.leftClick(hint, { shiftKey: true, metaKey: true });
-    }
-}
-
 // ============== Toggle Fold ==============
-export function toggleFold() {
-    RoamBlock.selected().toggleFold();
+export async function toggleFold() {
+    await RoamBlock.selected().toggleFold();
 }
 
 // ============== Delete Block ==============
 export async function deleteBlock() {
-    const blockElement = RoamBlock.selected().element;
-    // First, yank the text (vim dd saves to register)
-    await Roam.activateBlock(blockElement);
-    const textarea = Roam.getRoamBlockInput();
-    if (textarea) {
-        yankRegister = textarea.value;
-        try {
-            await navigator.clipboard.writeText(textarea.value);
-        } catch (e) {
-            // Clipboard write may fail silently
-        }
-    }
-    // Then delete the block using Roam's method
-    await Roam.deleteBlock();
+    const element = RoamBlock.selected().element;
+
+    // Yank to the clipboard first, like vim's `dd`. Reading via the datastore
+    // means we no longer have to focus the block (which would flip us into
+    // INSERT mode) just to grab its text.
+    await writeToClipboard(await Roam.getBlockText(element));
+
+    await Roam.deleteBlock(element);
     await returnToNormalMode();
+    updateVimView();
 }
 
 // ============== Reference Commands ==============

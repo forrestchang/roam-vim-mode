@@ -4,9 +4,14 @@
   "type": "module",
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "watch": "node build.js --watch",
+    "test": "node --test test/*.test.js",
+    "lint": "eslint .",
+    "check": "npm run lint && npm test && npm run build"
   },
   "devDependencies": {
-    "esbuild": "^0.20.0"
+    "esbuild": "^0.20.0",
+    "eslint": "^10.8.0",
+    "globals": "^17.9.0"
   }
 }

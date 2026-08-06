@@ -3,68 +3,52 @@
  */
 
 import { MODE_INDICATOR_ID } from './constants.js';
-import { Mode, getMode } from './mode.js';
+import { Mode, onModeChange } from './mode.js';
+import { debugLog } from './logger.js';
 
-let modeIndicatorInterval = null;
+let unsubscribeModeChange = null;
+
+/** Label and colour per mode. Keep every `Mode` member represented. */
+const MODE_APPEARANCE = {
+    [Mode.NORMAL]: { label: '-- NORMAL --', background: '#2196F3' },
+    [Mode.INSERT]: { label: '-- INSERT --', background: '#4CAF50' },
+    [Mode.VISUAL]: { label: '-- VISUAL --', background: '#FF9800' },
+    [Mode.HINT]: { label: '-- HINT --', background: '#9C27B0' },
+    [Mode.SEARCH]: { label: '-- SEARCH --', background: '#607D8B' },
+};
 
 export function createModeIndicator() {
+    if (document.getElementById(MODE_INDICATOR_ID)) return;
+
     const indicator = document.createElement('div');
     indicator.id = MODE_INDICATOR_ID;
-    indicator.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        padding: 6px 12px;
-        border-radius: 4px;
-        font-family: monospace;
-        font-size: 12px;
-        font-weight: bold;
-        z-index: 10000;
-        pointer-events: none;
-        transition: all 0.2s ease;
-    `;
     document.body.appendChild(indicator);
-    updateModeIndicator();
 
-    modeIndicatorInterval = setInterval(updateModeIndicator, 100);
+    // Event-driven: the old 100ms setInterval ran getMode() ten times a second
+    // for the entire lifetime of the tab, even while completely idle.
+    unsubscribeModeChange = onModeChange(updateModeIndicator);
 }
 
-function updateModeIndicator() {
+function updateModeIndicator(mode) {
+    debugLog('mode', `-> ${mode}`);
     const indicator = document.getElementById(MODE_INDICATOR_ID);
     if (!indicator) return;
 
-    const mode = getMode();
-    switch (mode) {
-        case Mode.NORMAL:
-            indicator.textContent = '-- NORMAL --';
-            indicator.style.backgroundColor = '#2196F3';
-            indicator.style.color = 'white';
-            break;
-        case Mode.INSERT:
-            indicator.textContent = '-- INSERT --';
-            indicator.style.backgroundColor = '#4CAF50';
-            indicator.style.color = 'white';
-            break;
-        case Mode.VISUAL:
-            indicator.textContent = '-- VISUAL --';
-            indicator.style.backgroundColor = '#FF9800';
-            indicator.style.color = 'white';
-            break;
-        case Mode.HINT:
-            indicator.textContent = '-- HINT --';
-            indicator.style.backgroundColor = '#9C27B0';
-            indicator.style.color = 'white';
-            break;
+    const appearance = MODE_APPEARANCE[mode];
+    if (!appearance) {
+        console.warn('[Roam Vim Mode] No indicator appearance for mode', mode);
+        return;
     }
+
+    indicator.textContent = appearance.label;
+    indicator.style.backgroundColor = appearance.background;
+    indicator.style.color = 'white';
 }
 
 export function removeModeIndicator() {
-    const indicator = document.getElementById(MODE_INDICATOR_ID);
-    if (indicator) {
-        indicator.remove();
-    }
-    if (modeIndicatorInterval) {
-        clearInterval(modeIndicatorInterval);
-        modeIndicatorInterval = null;
+    document.getElementById(MODE_INDICATOR_ID)?.remove();
+    if (unsubscribeModeChange) {
+        unsubscribeModeChange();
+        unsubscribeModeChange = null;
     }
 }

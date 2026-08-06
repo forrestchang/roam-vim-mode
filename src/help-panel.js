@@ -19,25 +19,28 @@ const KEYBINDINGS = {
         { key: 'a', description: 'Enter insert mode (end)' },
         { key: 'o', description: 'Insert block below' },
         { key: 'O', description: 'Insert block above' },
-        { key: 'V', description: 'Enter visual mode (line)' },
-        { key: 'dd', description: 'Delete block' },
+        { key: 'V', description: 'Select block (visual)' },
+        { key: 'dd', description: 'Delete block (yanks first)' },
         { key: 'u', description: 'Undo' },
         { key: 'Ctrl+r', description: 'Redo' },
         { key: 'z', description: 'Toggle fold' },
         { key: 'c', description: 'Center current block' },
     ],
     'Search': [
-        { key: '/', description: 'Search in visible blocks' },
+        { key: '/', description: 'Search in current panel' },
         { key: 'n', description: 'Go to next match' },
         { key: 'N', description: 'Go to previous match' },
     ],
     'Hints': [
+        { key: 'f', description: 'Hint all links on page' },
+        { key: 'F', description: 'Hint links → open in sidebar' },
         { key: 'q/w/e/r/t/b', description: 'Click link in block' },
         { key: 'Shift + hint', description: 'Shift-click link' },
     ],
     'Other': [
         { key: 'Esc', description: 'Return to normal mode' },
         { key: '?', description: 'Toggle this help panel' },
+        { key: 'Space', description: 'Leader menu (if enabled)' },
     ],
 };
 
