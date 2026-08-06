@@ -8,7 +8,9 @@ import {
     PAGE_HINT_CSS_CLASS,
     PAGE_HINT_OVERLAY_ID,
 } from './constants.js';
-import { Mouse } from './utils.js';
+import { Mouse, isElementFullyVisible } from './utils.js';
+import { notifyModeChange } from './mode-events.js';
+import { debugLog } from './logger.js';
 
 // ============== Page Hints State ==============
 export const pageHintState = {
@@ -73,37 +75,21 @@ function getClickableElements() {
         allElements.push(link);
     });
 
-    return allElements.filter(el => {
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 &&
-               rect.top >= 0 && rect.left >= 0 &&
-               rect.bottom <= window.innerHeight &&
-               rect.right <= window.innerWidth;
-    });
+    return allElements.filter(isElementFullyVisible);
 }
 
 // ============== Block Elements ==============
 function getBlockElements() {
     // Target all visible blocks for editing
-    const elements = document.querySelectorAll(Selectors.block);
-    return Array.from(elements).filter(el => {
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 &&
-               rect.top >= 0 && rect.left >= 0 &&
-               rect.bottom <= window.innerHeight &&
-               rect.right <= window.innerWidth;
-    });
+    return Array.from(document.querySelectorAll(Selectors.block)).filter(isElementFullyVisible);
 }
 
 // ============== Scroll Handling ==============
 function updateHintPositions() {
     pageHintState.hints.forEach(hint => {
-        const rect = hint.element.getBoundingClientRect();
         // Hide hints for elements that scrolled out of view
-        if (rect.width > 0 && rect.height > 0 &&
-            rect.top >= 0 && rect.left >= 0 &&
-            rect.bottom <= window.innerHeight &&
-            rect.right <= window.innerWidth) {
+        if (isElementFullyVisible(hint.element)) {
+            const rect = hint.element.getBoundingClientRect();
             hint.hintEl.style.left = `${rect.left}px`;
             hint.hintEl.style.top = `${rect.top}px`;
             hint.hintEl.style.visibility = 'visible';
@@ -164,17 +150,61 @@ export function showPageHints(options = {}) {
     pageHintState.active = true;
     pageHintState.inputBuffer = '';
     addScrollListeners();
+    debugLog('hints', `showing ${pageHintState.hints.length} hints`, {
+        editBlock: pageHintState.editBlock,
+        openInSidebar: pageHintState.openInSidebar,
+    });
+    notifyModeChange();
+
+    // Nothing to click — don't strand the user in an empty HINT mode.
+    if (pageHintState.hints.length === 0) {
+        hidePageHints();
+    }
 }
 
 export function hidePageHints() {
     removeScrollListeners();
-    const overlay = document.getElementById(PAGE_HINT_OVERLAY_ID);
-    if (overlay) {
-        overlay.remove();
-    }
+    document.getElementById(PAGE_HINT_OVERLAY_ID)?.remove();
+    const wasActive = pageHintState.active;
     pageHintState.active = false;
     pageHintState.hints = [];
     pageHintState.inputBuffer = '';
+    if (wasActive) {
+        notifyModeChange();
+    }
+}
+
+// ============== Hint Label Rendering ==============
+/**
+ * Show only the hints still matching `buffer`, with the typed prefix emphasised.
+ *
+ * Labels come from `HINT_CHARS`, so building them with innerHTML is safe; the
+ * `textContent` assignments keep it that way even if that ever changes.
+ *
+ * @returns {boolean} whether any hint still matches
+ */
+export function renderHintLabels(buffer) {
+    let hasMatches = false;
+
+    pageHintState.hints.forEach(hint => {
+        if (!hint.label.startsWith(buffer)) {
+            hint.hintEl.style.display = 'none';
+            return;
+        }
+
+        hint.hintEl.style.display = '';
+        hint.hintEl.textContent = '';
+        if (buffer) {
+            const matched = document.createElement('span');
+            matched.className = `${PAGE_HINT_CSS_CLASS}--matched`;
+            matched.textContent = buffer;
+            hint.hintEl.appendChild(matched);
+        }
+        hint.hintEl.appendChild(document.createTextNode(hint.label.substring(buffer.length)));
+        hasMatches = true;
+    });
+
+    return hasMatches;
 }
 
 // ============== Filter Hints ==============
@@ -184,33 +214,31 @@ export function filterPageHints(char) {
 
     const exactMatch = pageHintState.hints.find(h => h.label === buffer);
     if (exactMatch) {
-        // For block editing, just click to enter edit mode
-        // For links, optionally shift-click to open in sidebar
-        const clickOptions = pageHintState.editBlock ? {} :
-            (pageHintState.openInSidebar ? { shiftKey: true } : {});
-        Mouse.leftClick(exactMatch.element, clickOptions);
+        // For block editing, just click to enter edit mode.
+        // For links, optionally shift-click to open in the sidebar.
+        const clickOptions = pageHintState.editBlock
+            ? {}
+            : pageHintState.openInSidebar
+                ? { shiftKey: true }
+                : {};
+        const target = exactMatch.element;
         hidePageHints();
+        Mouse.leftClick(target, clickOptions);
         return true;
     }
 
-    let hasMatches = false;
-    pageHintState.hints.forEach(hint => {
-        if (hint.label.startsWith(buffer)) {
-            hint.hintEl.style.display = '';
-            const matched = buffer;
-            const remaining = hint.label.substring(buffer.length);
-            hint.hintEl.innerHTML = `<span class="${PAGE_HINT_CSS_CLASS}--matched">${matched}</span>${remaining}`;
-            hasMatches = true;
-        } else {
-            hint.hintEl.style.display = 'none';
-        }
-    });
-
+    const hasMatches = renderHintLabels(buffer);
     if (!hasMatches) {
         hidePageHints();
     }
-
     return hasMatches;
+}
+
+/** Remove the last typed character and re-render. */
+export function backspacePageHints() {
+    if (pageHintState.inputBuffer.length === 0) return;
+    pageHintState.inputBuffer = pageHintState.inputBuffer.slice(0, -1);
+    renderHintLabels(pageHintState.inputBuffer);
 }
 
 export function enterPageHintMode(options = {}) {

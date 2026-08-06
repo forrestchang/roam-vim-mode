@@ -3,7 +3,6 @@
  */
 
 import {
-    EXTENSION_ID,
     SELECTED_BLOCK_CSS_CLASS,
     HINT_CSS_CLASS,
     BLUR_PIXEL_ID,
@@ -12,9 +11,10 @@ import {
     PAGE_HINT_CSS_CLASS,
     PAGE_HINT_OVERLAY_ID,
     WHICH_KEY_PANEL_ID,
+    MODE_INDICATOR_ID,
     SEARCH_INPUT_ID,
-    SEARCH_HIGHLIGHT_CSS_CLASS,
-    SEARCH_CURRENT_CSS_CLASS,
+    SEARCH_HIGHLIGHT_NAME,
+    SEARCH_CURRENT_HIGHLIGHT_NAME,
 } from './constants.js';
 
 export const VIM_MODE_STYLES = `
@@ -344,21 +344,47 @@ export const VIM_MODE_STYLES = `
     color: #a7b6c2;
 }
 
-.${SEARCH_HIGHLIGHT_CSS_CLASS} {
+/*
+ * Search matches are painted with the CSS Custom Highlight API, so these rules
+ * style ranges rather than elements — no markup is injected into Roam's blocks.
+ * Only a small set of properties is honoured inside ::highlight(); background-color
+ * and color are the ones we need.
+ */
+::highlight(${SEARCH_HIGHLIGHT_NAME}) {
     background-color: #fff59d;
-    border-radius: 2px;
+    color: #24292e;
 }
 
-.bp3-dark .${SEARCH_HIGHLIGHT_CSS_CLASS} {
-    background-color: #5c6b3a;
-}
-
-.${SEARCH_CURRENT_CSS_CLASS} {
+::highlight(${SEARCH_CURRENT_HIGHLIGHT_NAME}) {
     background-color: #ff9800;
-    border-radius: 2px;
+    color: #24292e;
 }
 
-.bp3-dark .${SEARCH_CURRENT_CSS_CLASS} {
+/* Descendant combinator: the highlight pseudo-element belongs to whichever
+   element contains the matched text, not to .bp3-dark itself. */
+.bp3-dark ::highlight(${SEARCH_HIGHLIGHT_NAME}) {
+    background-color: #5c6b3a;
+    color: #f5f8fa;
+}
+
+.bp3-dark ::highlight(${SEARCH_CURRENT_HIGHLIGHT_NAME}) {
     background-color: #e65100;
+    color: #f5f8fa;
+}
+
+/* Mode indicator */
+#${MODE_INDICATOR_ID} {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: bold;
+    z-index: 10000;
+    pointer-events: none;
+    transition: background-color 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 `;

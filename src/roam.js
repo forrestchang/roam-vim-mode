@@ -1,11 +1,15 @@
 /**
  * Roam API wrapper and related utilities
+ *
+ * Destructive or state-changing operations go through `roam-api.js`
+ * (`window.roamAlphaAPI`) whenever it is available, and only fall back to
+ * simulated clicks / key events when it is not.
  */
 
-import { Selectors } from './constants.js';
+import { Selectors, BLOCK_ACTIVATION_TIMEOUT_MS } from './constants.js';
+import { debugLog, warnFallback } from './logger.js';
 import {
     delay,
-    assumeExists,
     getActiveEditElement,
     getInputEvent,
     Keyboard,
@@ -13,6 +17,19 @@ import {
     onSelectorChange,
     waitForSelectorToExist,
 } from './utils.js';
+import {
+    createBlock as apiCreateBlock,
+    deleteBlock as apiDeleteBlock,
+    focusBlock,
+    getBlockUid,
+    getFocusedBlock,
+    getWindowId,
+    isApiAvailable,
+    pullBlock,
+    redo as apiRedo,
+    undo as apiUndo,
+    updateBlock as apiUpdateBlock,
+} from './roam-api.js';
 
 // ============== RoamNode ==============
 export class Selection {
@@ -28,18 +45,6 @@ export class RoamNode {
         this.selection = selection;
     }
 
-    textBeforeSelection() {
-        return this.text.substring(0, this.selection.start);
-    }
-
-    textAfterSelection() {
-        return this.text.substring(this.selection.end);
-    }
-
-    selectedText() {
-        return this.text.substring(this.selection.start, this.selection.end);
-    }
-
     withCursorAtTheStart() {
         return this.withSelection(new Selection(0, 0));
     }
@@ -53,15 +58,28 @@ export class RoamNode {
     }
 }
 
-// ============== Roam API Wrapper ==============
-function nearestFoldButton(element) {
-    const foldButton = element.querySelector(Selectors.foldButton);
-    if (foldButton) {
-        return foldButton;
+// ============== Fold button lookup ==============
+/**
+ * Walk up from `element` looking for the nearest fold caret.
+ *
+ * Bounded by `document.body`: blocks without children render no caret, and the
+ * previous recursive version walked past `<html>` and threw on `null.parentElement`.
+ *
+ * @returns {Element|null}
+ */
+export function nearestFoldButton(element) {
+    let current = element;
+    while (current && current !== document.body) {
+        const foldButton = current.querySelector?.(Selectors.foldButton);
+        if (foldButton) {
+            return foldButton;
+        }
+        current = current.parentElement;
     }
-    return nearestFoldButton(assumeExists(element.parentElement));
+    return null;
 }
 
+// ============== Roam API Wrapper ==============
 export const Roam = {
     async save(roamNode) {
         const roamElement = this.getRoamBlockInput();
@@ -93,67 +111,253 @@ export const Roam = {
         await this.save(action(node));
     },
 
-    async highlight(element) {
-        if (element) {
-            await this.activateBlock(element);
+    /**
+     * Read a block's text without having to focus it.
+     *
+     * Falls back to activating the block and reading the textarea only when the
+     * official API is unavailable — activating has the nasty side effect of
+     * dropping the user into INSERT mode.
+     */
+    async getBlockText(element) {
+        const uid = getBlockUid(element);
+        const block = uid ? pullBlock(uid) : null;
+        if (block) {
+            return block.string;
         }
-        if (this.getRoamBlockInput()) {
-            return Keyboard.pressEsc();
-        } else {
-            return Promise.reject("We're not inside a block");
-        }
+        await this.activateBlock(element);
+        return this.getRoamBlockInput()?.value ?? '';
     },
 
-    async activateBlock(element) {
-        if (element.classList.contains('roam-block')) {
-            await Mouse.leftClick(element);
+    /**
+     * Poll until Roam has swapped in the editing textarea.
+     *
+     * Replaces the old "click and hope 20ms was enough" timing assumption, which
+     * made `i` / `a` / `o` silently do nothing on a slow render.
+     */
+    async waitForBlockInput(uid, timeout = BLOCK_ACTIVATION_TIMEOUT_MS) {
+        const deadline = Date.now() + timeout;
+        while (Date.now() < deadline) {
+            const input = this.getRoamBlockInput();
+            if (input && (!uid || input.id.endsWith(uid))) {
+                return input;
+            }
+            await delay(16);
         }
         return this.getRoamBlockInput();
     },
 
-    async deleteBlock() {
-        return this.highlight().then(() => Keyboard.pressBackspace());
+    /**
+     * Put the block into edit mode, optionally placing the cursor.
+     * @returns {Promise<HTMLTextAreaElement|null>} the focused textarea
+     */
+    async activateBlock(element, { start, end } = {}) {
+        if (!element) return null;
+
+        const uid = getBlockUid(element);
+
+        if (uid && isApiAvailable()) {
+            const focused = await focusBlock({
+                uid,
+                windowId: getWindowId(element),
+                start,
+                end,
+            });
+            if (focused) {
+                const input = await this.waitForBlockInput(uid);
+                if (input) return input;
+            }
+        }
+
+        if (element.classList.contains('roam-block')) {
+            await Mouse.leftClick(element);
+        }
+        return this.waitForBlockInput(uid);
     },
 
-    async copyBlock() {
-        await this.highlight();
-        document.execCommand('copy');
+    /**
+     * Turn the focused block into Roam's blue block-selection (VISUAL mode).
+     * @returns {Promise<boolean>} whether we ended up inside a block
+     */
+    async highlight(element) {
+        if (element) {
+            await this.activateBlock(element);
+        }
+        if (!this.getRoamBlockInput()) {
+            return false;
+        }
+        await Keyboard.pressEsc();
+        return true;
+    },
+
+    async deleteBlock(element) {
+        try {
+            const uid = getBlockUid(element);
+            if (uid && (await apiDeleteBlock(uid))) {
+                debugLog('roam', 'deleteBlock via API', { uid });
+                return true;
+            }
+        } catch (error) {
+            warnFallback('deleteBlock via roamAlphaAPI failed', error);
+        }
+        // Fallback: select the block and let Roam's own delete handle it.
+        if (await this.highlight(element)) {
+            await Keyboard.pressBackspace();
+            return true;
+        }
+        return false;
     },
 
     async moveCursorToStart() {
+        const focused = getFocusedBlock();
+        if (focused && (await focusBlock({ ...focused, start: 0 }))) {
+            return;
+        }
         await this.applyToCurrent(node => node.withCursorAtTheStart());
     },
 
     async moveCursorToEnd() {
+        // `setBlockFocusAndSelection` with no `selection` parks the cursor at the end.
+        const focused = getFocusedBlock();
+        if (focused && (await focusBlock(focused))) {
+            return;
+        }
         await this.applyToCurrent(node => node.withCursorAtTheEnd());
     },
 
-    async createBlockBelow() {
+    /**
+     * Create an empty block below `element` and focus it (vim's `o`).
+     *
+     * Mirrors Roam's own Enter-at-end rule: a block that has children and is
+     * expanded gets a new *first child*, anything else gets a sibling directly
+     * below. Doing this through the API rather than by simulating Enter means the
+     * result doesn't depend on Roam's keyboard handling or on render timing.
+     *
+     * @returns {Promise<string|null>} the new block's uid
+     */
+    async createBlockBelow(element) {
+        try {
+            const uid = getBlockUid(element);
+            const block = uid ? pullBlock(uid) : null;
+            debugLog('roam', 'createBlockBelow: resolved block', { uid, block });
+
+            if (block) {
+                const nestIntoChildren = block.open && block.childCount > 0;
+                const parentUid = nestIntoChildren ? block.uid : block.parentUid;
+                const order = nestIntoChildren ? 0 : block.order + 1;
+
+                if (parentUid) {
+                    const newUid = await apiCreateBlock({ parentUid, order });
+                    debugLog('roam', 'createBlockBelow: created via API', { newUid, parentUid, order, nestIntoChildren });
+                    if (newUid) {
+                        await focusBlock({ uid: newUid, windowId: getWindowId(element) });
+                        return newUid;
+                    }
+                }
+            }
+        } catch (error) {
+            warnFallback('createBlockBelow via roamAlphaAPI failed', error);
+        }
+
+        // Fallback: let Roam's own Enter handling do it.
+        debugLog('roam', 'createBlockBelow: using Enter fallback');
+        await this.activateBlock(element);
         await this.moveCursorToEnd();
         await Keyboard.pressEnter();
+        return null;
+    },
+
+    /**
+     * Create an empty block above `element` and focus it (vim's `O`).
+     * Always a sibling — there is no "above" inside the children list.
+     *
+     * @returns {Promise<string|null>} the new block's uid
+     */
+    async createBlockAbove(element) {
+        try {
+            const uid = getBlockUid(element);
+            const block = uid ? pullBlock(uid) : null;
+            debugLog('roam', 'createBlockAbove: resolved block', { uid, block });
+
+            if (block?.parentUid) {
+                // Inserting at the current order pushes this block (and the rest) down.
+                const newUid = await apiCreateBlock({
+                    parentUid: block.parentUid,
+                    order: block.order,
+                });
+                if (newUid) {
+                    await focusBlock({ uid: newUid, windowId: getWindowId(element) });
+                    return newUid;
+                }
+            }
+        } catch (error) {
+            warnFallback('createBlockAbove via roamAlphaAPI failed', error);
+        }
+
+        // Fallback: Enter at the very start of a block opens one above it.
+        debugLog('roam', 'createBlockAbove: using Enter fallback');
+        await this.activateBlock(element, { start: 0 });
+        await Keyboard.pressEnter();
+        return null;
     },
 
     async toggleFoldBlock(block) {
+        try {
+            const uid = getBlockUid(block);
+            const pulled = uid ? pullBlock(uid) : null;
+            if (pulled && (await apiUpdateBlock({ uid, open: !pulled.open }))) {
+                debugLog('roam', 'toggleFoldBlock via API', { uid, open: !pulled.open });
+                return true;
+            }
+        } catch (error) {
+            warnFallback('toggleFoldBlock via roamAlphaAPI failed', error);
+        }
+
         const foldButton = nearestFoldButton(block);
+        if (!foldButton) {
+            return false;
+        }
         await Mouse.hover(foldButton);
         await Mouse.leftClick(foldButton);
+        return true;
+    },
+
+    async undo() {
+        if (await apiUndo()) return true;
+        await Keyboard.simulateKeyCombo('z');
+        return false;
+    },
+
+    async redo() {
+        if (await apiRedo()) return true;
+        await Keyboard.simulateKeyCombo('z', { shiftKey: true });
+        return false;
     },
 };
 
 // ============== Block Utilities ==============
-export function getBlockUid(htmlBlockId) {
-    const UID_LENGTH = 9;
-    return htmlBlockId.substr(htmlBlockId?.length - UID_LENGTH);
-}
+export { getBlockUid };
 
 export function copyBlockReference(htmlBlockId) {
-    if (!htmlBlockId) return;
-    return navigator.clipboard.writeText(`((${getBlockUid(htmlBlockId)}))`);
+    const uid = getBlockUid(htmlBlockId);
+    if (!uid) return Promise.resolve(false);
+    return writeToClipboard(`((${uid}))`);
 }
 
 export function copyBlockEmbed(htmlBlockId) {
-    if (!htmlBlockId) return;
-    return navigator.clipboard.writeText(`{{embed: ((${getBlockUid(htmlBlockId)}))}}`);
+    const uid = getBlockUid(htmlBlockId);
+    if (!uid) return Promise.resolve(false);
+    return writeToClipboard(`{{embed: ((${uid}))}}`);
+}
+
+/** Clipboard writes reject when the document isn't focused; never let that escape. */
+export async function writeToClipboard(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch (error) {
+        console.warn('[Roam Vim Mode] Could not write to clipboard', error);
+        return false;
+    }
 }
 
 // ============== Roam Events ==============
@@ -192,7 +396,7 @@ export const RoamEvent = {
     onEditBlock(handler) {
         const handleBlockEvent = (event) => {
             const element = event.target;
-            if (element.classList.contains('rm-block-input')) {
+            if (element.classList?.contains('rm-block-input')) {
                 handler(element);
             }
         };
@@ -203,10 +407,18 @@ export const RoamEvent = {
     onBlurBlock(handler) {
         const handleBlockEvent = (event) => {
             const element = event.target;
-            if (element.classList.contains('rm-block-input')) {
-                const container = assumeExists(element.closest(Selectors.blockContainer));
-                waitForSelectorToExist(`${Selectors.block}#${Selectors.escapeHtmlId(element.id)}`, container).then(handler);
+            if (!element.classList?.contains('rm-block-input')) return;
+
+            const container = element.closest(Selectors.blockContainer);
+            if (!container) {
+                handler(null);
+                return;
             }
+            const selector = `${Selectors.block}#${Selectors.escapeHtmlId(element.id)}`;
+            waitForSelectorToExist(selector, container, { timeout: BLOCK_ACTIVATION_TIMEOUT_MS })
+                .then(handler)
+                // The block can legitimately vanish (deleted, page navigated away).
+                .catch(() => handler(null));
         };
         document.addEventListener('focusout', handleBlockEvent);
         return () => document.removeEventListener('focusout', handleBlockEvent);
@@ -235,22 +447,22 @@ export const RoamEvent = {
     },
 };
 
-// ============== RoamBlock ==============
-// Note: RoamBlock is defined in panel.js to avoid circular dependency
-// It needs VimRoamPanel which needs RoamBlock
-
 // ============== RoamHighlight ==============
+// Note: RoamBlock is defined in panel.js to avoid a circular dependency —
+// it needs VimRoamPanel, which needs RoamBlock.
 export const RoamHighlight = {
     highlightedBlocks() {
         return document.querySelectorAll(`${Selectors.highlight} ${Selectors.block}`);
     },
 
+    /** @returns {Element|null} */
     first() {
-        return assumeExists(this.highlightedBlocks()[0], 'No block is highlighted');
+        return this.highlightedBlocks()[0] ?? null;
     },
 
+    /** @returns {Element|null} */
     last() {
         const blocks = this.highlightedBlocks();
-        return assumeExists(blocks[blocks.length - 1], 'No block is highlighted');
+        return blocks[blocks.length - 1] ?? null;
     },
 };

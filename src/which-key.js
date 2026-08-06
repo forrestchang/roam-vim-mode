@@ -69,20 +69,6 @@ export function hideWhichKey() {
     whichKeyState.path = [];
 }
 
-/**
- * Check if which-key is currently active or about to show
- */
-export function isWhichKeyActive() {
-    return whichKeyState.active || whichKeyState.showTimeout !== null;
-}
-
-/**
- * Get current which-key state
- */
-export function getWhichKeyState() {
-    return { ...whichKeyState };
-}
-
 // ============== Rendering ==============
 
 function renderWhichKeyPopup(node, path) {

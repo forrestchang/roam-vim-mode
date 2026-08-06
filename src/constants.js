@@ -13,8 +13,11 @@ export const PAGE_HINT_CSS_CLASS = `${EXTENSION_ID}--page-hint`;
 export const PAGE_HINT_OVERLAY_ID = `${EXTENSION_ID}--page-hint-overlay`;
 export const MODE_INDICATOR_ID = `${EXTENSION_ID}--mode-indicator`;
 export const SEARCH_INPUT_ID = `${EXTENSION_ID}--search-input`;
-export const SEARCH_HIGHLIGHT_CSS_CLASS = `${EXTENSION_ID}--search-highlight`;
-export const SEARCH_CURRENT_CSS_CLASS = `${EXTENSION_ID}--search-current`;
+
+// Native CSS Custom Highlight API registry names. These are CSS idents, so they
+// must not contain the `--` used elsewhere in this file.
+export const SEARCH_HIGHLIGHT_NAME = 'roam-vim-search';
+export const SEARCH_CURRENT_HIGHLIGHT_NAME = 'roam-vim-search-current';
 
 export const Selectors = {
     link: '.rm-page-ref',
@@ -25,6 +28,10 @@ export const Selectors = {
     blockReference: '.rm-block-ref',
     blockBulletView: '.block-bullet-view',
     title: '.rm-title-display',
+    // Roam's React root. Synthetic events must be dispatched inside this subtree:
+    // React attaches its listeners to the root container, so an event dispatched
+    // on `document.body` bubbles to `html`/`document` and never reaches Roam.
+    appRoot: '#app',
     main: '.roam-main',
     mainContent: '.roam-article',
     mainBody: '.roam-body-main',
@@ -52,15 +59,61 @@ export const Selectors = {
     pageReferenceLink: '.rm-ref-page-view-title a span',
     filterButton: '.bp3-icon.bp3-icon-filter',
     commandBar: '.bp3-omnibar',
-    escapeHtmlId: (htmlId) => htmlId.replace('.', '\\.').replace('@', '\\@'),
+    // CodeMirror 5 (`.CodeMirror`) and 6 (`.cm-editor`) roots. Roam renders code
+    // blocks with CodeMirror, which owns the keyboard while focused.
+    codeEditor: '.CodeMirror, .cm-editor',
+    /**
+     * Roam UI that owns Escape itself — but only while it actually has focus.
+     *
+     * Presence alone proves nothing: a running Roam keeps ~6 `.bp3-overlay` and
+     * ~4 `.bp3-overlay-open` elements mounted at all times. Testing for either
+     * was true permanently, so every Escape was handed to Roam and returning to
+     * normal mode in one press was impossible. Always pair this with a
+     * `document.activeElement.closest(...)` check.
+     */
+    roamModal: '.bp3-omnibar, .bp3-dialog, .bp3-overlay-open',
+    blueprintOverlay: '.bp3-overlay-open',
+    modalBackdrop: '.bp3-overlay-backdrop',
+    escapeHtmlId,
 };
 
-// Hint configuration
+/**
+ * Escape an HTML id for use inside a CSS selector.
+ *
+ * Roam block ids embed page uids, which can contain `.`, `@` and other CSS
+ * meta-characters. `CSS.escape` handles every one of them; the manual fallback
+ * exists only for non-browser environments (unit tests).
+ */
+export function escapeHtmlId(htmlId) {
+    if (typeof htmlId !== 'string') return '';
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+        return CSS.escape(htmlId);
+    }
+    return htmlId.replace(/[^a-zA-Z0-9_-]/g, ch => `\\${ch}`);
+}
+
+// ============== Block id parsing ==============
+// Roam renders the read-only block div and its editing textarea with the same
+// id: `block-input-<window-id>-<block-uid>`.
+export const BLOCK_ID_PREFIX = 'block-input-';
+export const UID_LENGTH = 9;
+
+// ============== In-block hints ==============
 export const HINT_IDS = [0, 1, 2, 3, 4, 5];
 export const DEFAULT_HINT_KEYS = ['q', 'w', 'e', 'r', 't', 'b'];
-export const HINT_CHARS = 'asdfghjkl';
-export const SCROLL_PADDING = 50;
 
-// Which-key configuration
+// ============== Page-wide hints (Vimium style) ==============
+export const HINT_CHARS = 'asdfghjkl';
+
+// ============== Tunables ==============
+export const SCROLL_PADDING = 50;
+/** How long a partially typed multi-key sequence (`g`, `d`, …) stays pending. */
+export const SEQUENCE_TIMEOUT_MS = 500;
+/** How long to wait for Roam to swap a block into an editable textarea. */
+export const BLOCK_ACTIVATION_TIMEOUT_MS = 1000;
+/** Upper bound on search matches, to keep highlighting responsive on big pages. */
+export const SEARCH_MAX_MATCHES = 500;
+
+// ============== Which-key configuration ==============
 export const WHICH_KEY_PANEL_ID = `${EXTENSION_ID}--which-key`;
 export const WHICH_KEY_DELAY = 400; // ms before showing popup
