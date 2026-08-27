@@ -35,6 +35,10 @@ var Selectors = {
   leftPanel: ".roam-sidebar-container",
   topBar: ".rm-topbar",
   foldButton: ".rm-caret",
+  // Roam marks each caret with its state; blocks without children get
+  // `.rm-caret-hidden`, which must never be clicked.
+  foldButtonOpen: ".rm-caret-open",
+  foldButtonClosed: ".rm-caret-closed",
   highlight: ".block-highlight-blue",
   button: ".bp3-button",
   closeButton: ".bp3-icon-cross",
@@ -50,6 +54,17 @@ var Selectors = {
   breadcrumbsContainer: ".zoom-mentions-view",
   pageReferenceItem: ".rm-ref-page-view",
   pageReferenceLink: ".rm-ref-page-view-title a span",
+  // The per-page header inside Linked References / Mentions. Its collapse
+  // caret is a sibling of the title, under a `.rm-title-arrow-wrapper`.
+  pageReferenceTitle: ".rm-ref-page-view-title",
+  /**
+   * Everything under Linked References / Mentions.
+   *
+   * Blocks rendered here belong to other pages, so page-wide commands must
+   * leave their `:block/open` alone — collapsing them would silently reshape
+   * a page the user isn't even looking at.
+   */
+  referencesRegion: ".rm-reference-item, .rm-ref-page-view, .zoom-mentions-view",
   filterButton: ".bp3-icon.bp3-icon-filter",
   commandBar: ".bp3-omnibar",
   // CodeMirror 5 (`.CodeMirror`) and 6 (`.cm-editor`) roots. Roam renders code
@@ -86,6 +101,7 @@ var SCROLL_PADDING = 50;
 var SEQUENCE_TIMEOUT_MS = 500;
 var BLOCK_ACTIVATION_TIMEOUT_MS = 1e3;
 var SEARCH_MAX_MATCHES = 500;
+var MAX_FOLD_ALL_CLICKS = 500;
 var WHICH_KEY_PANEL_ID = `${EXTENSION_ID}--which-key`;
 var WHICH_KEY_DELAY = 400;
 
@@ -646,6 +662,34 @@ function pullBlock(uid) {
     return null;
   }
 }
+var TREE_PULL_PATTERN = "[:block/uid :block/open {:block/children ...}]";
+function pullBlockTree(uid) {
+  const api = getRoamAlphaAPI();
+  if (!api?.pull || !uid)
+    return [];
+  let root;
+  try {
+    root = api.pull(TREE_PULL_PATTERN, [":block/uid", uid]);
+  } catch (error) {
+    console.warn("[Roam Vim Mode] recursive pull failed for block", uid, error);
+    return [];
+  }
+  const blocks = [];
+  const visit = (node) => {
+    if (!node?.[":block/uid"])
+      return;
+    const raw = node[":block/children"];
+    const children = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    blocks.push({
+      uid: node[":block/uid"],
+      open: node[":block/open"] !== false,
+      hasChildren: children.length > 0
+    });
+    children.forEach(visit);
+  };
+  visit(root);
+  return blocks;
+}
 function getFocusedBlock() {
   const api = getRoamAlphaAPI();
   const focused = api?.ui?.getFocusedBlock?.();
@@ -765,6 +809,40 @@ function nearestFoldButton(element) {
     current = current.parentElement;
   }
   return null;
+}
+function insertionPoint(block, { above }) {
+  if (above) {
+    return { parentUid: block.parentUid, order: block.order };
+  }
+  return block.open && block.childCount > 0 ? { parentUid: block.uid, order: 0 } : { parentUid: block.parentUid, order: block.order + 1 };
+}
+function referenceHeaderCarets(panelElement) {
+  return Array.from(panelElement.querySelectorAll(Selectors.pageReferenceTitle)).map((title) => title.parentElement?.querySelector(Selectors.foldButton)).filter(Boolean);
+}
+async function clickCaretsUntilDone(nextCaret) {
+  let clicks = 0;
+  while (clicks < MAX_FOLD_ALL_CLICKS) {
+    const caret = nextCaret();
+    if (!caret)
+      break;
+    await Mouse.hover(caret);
+    await Mouse.leftClick(caret);
+    clicks++;
+  }
+  return clicks;
+}
+function caretsFacingTheWrongWay(open) {
+  return open ? Selectors.foldButtonClosed : Selectors.foldButtonOpen;
+}
+function anyRootExpanded(rootBlocks, panelElement) {
+  const pulled = rootBlocks.map((element) => {
+    const uid = getBlockUid(element);
+    return uid ? pullBlock(uid) : null;
+  }).filter(Boolean);
+  if (pulled.length > 0) {
+    return pulled.some((block) => block.open && block.childCount > 0);
+  }
+  return !!panelElement?.querySelector(Selectors.foldButtonOpen);
 }
 var Roam = {
   async save(roamNode) {
@@ -914,12 +992,10 @@ var Roam = {
       const block = uid ? pullBlock(uid) : null;
       debugLog("roam", "createBlockBelow: resolved block", { uid, block });
       if (block) {
-        const nestIntoChildren = block.open && block.childCount > 0;
-        const parentUid = nestIntoChildren ? block.uid : block.parentUid;
-        const order = nestIntoChildren ? 0 : block.order + 1;
+        const { parentUid, order } = insertionPoint(block, { above: false });
         if (parentUid) {
           const newUid = await createBlock({ parentUid, order });
-          debugLog("roam", "createBlockBelow: created via API", { newUid, parentUid, order, nestIntoChildren });
+          debugLog("roam", "createBlockBelow: created via API", { newUid, parentUid, order });
           if (newUid) {
             await focusBlock({ uid: newUid, windowId: getWindowId(element) });
             return newUid;
@@ -947,10 +1023,8 @@ var Roam = {
       const block = uid ? pullBlock(uid) : null;
       debugLog("roam", "createBlockAbove: resolved block", { uid, block });
       if (block?.parentUid) {
-        const newUid = await createBlock({
-          parentUid: block.parentUid,
-          order: block.order
-        });
+        const { parentUid, order } = insertionPoint(block, { above: true });
+        const newUid = await createBlock({ parentUid, order });
         if (newUid) {
           await focusBlock({ uid: newUid, windowId: getWindowId(element) });
           return newUid;
@@ -963,6 +1037,65 @@ var Roam = {
     await this.activateBlock(element, { start: 0 });
     await Keyboard.pressEnter();
     return null;
+  },
+  /**
+   * Create a run of blocks around `element`, one per string, in order (`p`).
+   *
+   * Unlike `createBlockBelow`, nothing is focused and nothing falls back to
+   * simulated keys: paste stays in NORMAL, and the Enter fallback cannot
+   * reliably chain across several blocks.
+   *
+   * @param {string[]} strings
+   * @returns {Promise<string[]>} the uids created, newest last; empty on failure
+   */
+  async createBlocks(element, strings, { above = false } = {}) {
+    const created = [];
+    try {
+      const uid = getBlockUid(element);
+      const block = uid ? pullBlock(uid) : null;
+      if (block) {
+        const { parentUid, order } = insertionPoint(block, { above });
+        if (parentUid) {
+          for (const [index, string] of strings.entries()) {
+            const newUid = await createBlock({
+              parentUid,
+              order: order + index,
+              string
+            });
+            if (!newUid)
+              break;
+            created.push(newUid);
+          }
+        }
+      }
+    } catch (error) {
+      warnFallback("createBlocks via roamAlphaAPI failed", error);
+    }
+    debugLog("roam", "createBlocks", { wanted: strings.length, created: created.length, above });
+    return created;
+  },
+  /**
+   * Delete several blocks at once (VISUAL `d`).
+   *
+   * A selection can hold both a parent and its children; deleting the parent
+   * takes the children with it, so the later uid is simply gone by the time we
+   * reach it. Each delete is contained so one such miss can't strand the rest.
+   *
+   * @returns {Promise<boolean>} whether anything was deleted through the API
+   */
+  async deleteBlocks(elements) {
+    const uids = elements.map(getBlockUid).filter(Boolean);
+    let deleted = 0;
+    for (const uid of uids) {
+      try {
+        if (await deleteBlock(uid))
+          deleted++;
+      } catch (error) {
+        warnFallback(`deleteBlock via roamAlphaAPI failed for ${uid}`, error);
+      }
+    }
+    debugLog("roam", "deleteBlocks", { selected: elements.length, deleted });
+    return deleted > 0;
   },
   async toggleFoldBlock(block) {
     try {
@@ -982,6 +1115,76 @@ var Roam = {
     await Mouse.hover(foldButton);
     await Mouse.leftClick(foldButton);
     return true;
+  },
+  /**
+   * Fold or unfold a whole page at once (vim's `zM` / `zR`), including the
+   * per-page headers in Linked References.
+   *
+   * @param {Element[]} rootBlocks the panel's outermost rendered blocks
+   * @param {Element} panelElement the panel, used to scope the caret clicks
+   * @returns {Promise<boolean>} whether anything was folded or unfolded
+   */
+  async toggleFoldAll(rootBlocks, panelElement) {
+    const open = !anyRootExpanded(rootBlocks, panelElement);
+    const uids = rootBlocks.map(getBlockUid).filter(Boolean);
+    debugLog("roam", "toggleFoldAll", { roots: uids.length, open });
+    const foldedBlocks = await this.setFoldStateDeep(uids, open) || await this.clickFoldButtonsUntilDone(panelElement, open) > 0;
+    const foldedHeaders = await this.toggleReferenceHeaders(panelElement, open);
+    return foldedBlocks || foldedHeaders > 0;
+  },
+  /**
+   * Collapse or expand the page groups in Linked References.
+   * @returns {Promise<number>} how many headers were toggled
+   */
+  async toggleReferenceHeaders(panelElement, open) {
+    if (!panelElement)
+      return 0;
+    const wrongWay = caretsFacingTheWrongWay(open);
+    const clicks = await clickCaretsUntilDone(
+      () => referenceHeaderCarets(panelElement).find((caret) => caret.matches?.(wrongWay))
+    );
+    debugLog("roam", "toggleReferenceHeaders", { open, clicks });
+    return clicks;
+  },
+  /**
+   * Set `:block/open` on `rootUids` and all of their descendants.
+   * @returns {Promise<boolean>} whether the datastore path handled it
+   */
+  async setFoldStateDeep(rootUids, open) {
+    try {
+      const blocks = rootUids.flatMap((uid) => pullBlockTree(uid));
+      if (blocks.length === 0) {
+        return false;
+      }
+      const stale = blocks.filter((block) => block.hasChildren && block.open !== open);
+      await Promise.all(stale.map(({ uid }) => updateBlock({ uid, open })));
+      debugLog("roam", "setFoldStateDeep via API", { open, updated: stale.length });
+      return true;
+    } catch (error) {
+      warnFallback("setFoldStateDeep via roamAlphaAPI failed", error);
+      return false;
+    }
+  },
+  /**
+   * Fallback fold-all: click block carets one at a time until none are left
+   * facing the wrong way.
+   *
+   * Reference blocks are skipped — they belong to other pages, and unlike the
+   * headers above them, collapsing one is a real edit to someone else's page.
+   *
+   * @returns {Promise<number>} how many blocks were toggled
+   */
+  async clickFoldButtonsUntilDone(panelElement, open) {
+    if (!panelElement)
+      return 0;
+    const wrongWay = caretsFacingTheWrongWay(open);
+    const clicks = await clickCaretsUntilDone(
+      () => Array.from(panelElement.querySelectorAll(wrongWay)).find(
+        (caret) => !caret.closest?.(Selectors.referencesRegion)
+      )
+    );
+    debugLog("roam", "toggleFoldAll via carets", { open, clicks });
+    return clicks;
   },
   async undo() {
     if (await undo())
@@ -1246,6 +1449,25 @@ var VimRoamPanel = class _VimRoamPanel {
   lastBlock() {
     const blocks = this.blocks();
     return blocks[blocks.length - 1];
+  }
+  /**
+   * The outermost blocks rendered in this panel: a page's own top-level blocks,
+   * or the children of whatever block the panel is zoomed into.
+   *
+   * The entry point for anything that works on the page as a whole — the rest
+   * of each tree is reachable from these through the datastore, including the
+   * parts a collapsed block keeps out of the DOM.
+   *
+   * Blocks under linked references belong to other pages, so they're excluded.
+   *
+   * @returns {Element[]}
+   */
+  topLevelBlocks() {
+    const containers = Array.from(this.element.querySelectorAll(Selectors.blockContainer)).filter((container) => !container.closest(Selectors.referencesRegion));
+    const containerSet = new Set(containers);
+    return containers.filter(
+      (container) => !containerSet.has(container.parentElement?.closest(Selectors.blockContainer))
+    ).map((container) => container.querySelector(`${Selectors.block}, ${Selectors.blockInput}`)).filter(Boolean);
   }
   select() {
     const index = panelState.panelOrder.indexOf(this.element);
@@ -1961,15 +2183,19 @@ var KEYBINDINGS = {
     { key: "G", description: "Jump to last block" }
   ],
   "Editing": [
-    { key: "i", description: "Enter insert mode (start)" },
-    { key: "a", description: "Enter insert mode (end)" },
+    { key: "i / I", description: "Enter insert mode (start)" },
+    { key: "a / A", description: "Enter insert mode (end)" },
     { key: "o", description: "Insert block below" },
     { key: "O", description: "Insert block above" },
     { key: "V", description: "Select block (visual)" },
+    { key: "d", description: "Delete selected blocks (visual)" },
     { key: "dd", description: "Delete block (yanks first)" },
+    { key: "yy", description: "Yank block" },
+    { key: "p / P", description: "Paste yanked block below / above" },
     { key: "u", description: "Undo" },
     { key: "Ctrl+r", description: "Redo" },
     { key: "z", description: "Toggle fold" },
+    { key: "Z", description: "Toggle fold for whole page" },
     { key: "c", description: "Center current block" }
   ],
   "Search": [
@@ -2119,6 +2345,19 @@ function renderWhichKeyPopup(node, path) {
   document.body.appendChild(panel);
 }
 
+// src/register.js
+var unnamedRegister = [];
+function setRegister(blocks) {
+  const texts = Array.isArray(blocks) ? blocks : [blocks];
+  unnamedRegister = texts.filter((text) => typeof text === "string");
+}
+function getRegister() {
+  return unnamedRegister;
+}
+function clearRegister() {
+  unnamedRegister = [];
+}
+
 // src/commands.js
 var MAX_NORMAL_MODE_NUDGES = 6;
 async function returnToNormalMode() {
@@ -2217,10 +2456,16 @@ function closeSidebarPage() {
 async function highlightSelectedBlock() {
   await Roam.highlight(RoamBlock.selected().element);
 }
+async function yankBlocks(texts) {
+  setRegister(texts);
+  await writeToClipboard(texts.join("\n"));
+}
 async function copySelectedBlock() {
-  const text = await Roam.getBlockText(RoamBlock.selected().element);
-  await writeToClipboard(text);
+  await yankBlocks([await Roam.getBlockText(RoamBlock.selected().element)]);
   await returnToNormalMode();
+}
+async function yankBlock() {
+  await yankBlocks([await Roam.getBlockText(RoamBlock.selected().element)]);
 }
 function copySelectedBlockReference() {
   return copyBlockReference(VimRoamPanel.selected().selectedBlockId);
@@ -2276,10 +2521,76 @@ function shiftClickHint(n) {
 async function toggleFold() {
   await RoamBlock.selected().toggleFold();
 }
+async function toggleFoldAll() {
+  const panel = VimRoamPanel.selected();
+  const roots = panel.topLevelBlocks();
+  await Roam.toggleFoldAll(roots, panel.element);
+  updateVimView();
+}
+async function selectRenderedBlock(panel, element, uid) {
+  const windowId = getWindowId(element);
+  if (!windowId || !uid)
+    return;
+  const htmlId = `${BLOCK_ID_PREFIX}${windowId}-${uid}`;
+  try {
+    await waitForSelectorToExist(`#${Selectors.escapeHtmlId(htmlId)}`, panel.element, {
+      timeout: BLOCK_ACTIVATION_TIMEOUT_MS
+    });
+    panel.selectBlock(htmlId);
+  } catch (error) {
+    debugLog("commands", "paste: new block never rendered, leaving selection put", error);
+  }
+}
+async function pasteRegister({ above }) {
+  const texts = getRegister();
+  if (texts.length === 0) {
+    debugLog("commands", "paste: register is empty");
+    return;
+  }
+  const panel = VimRoamPanel.selected();
+  const element = panel.selectedBlock().element;
+  const uids = await Roam.createBlocks(element, texts, { above });
+  if (uids.length > 0) {
+    await selectRenderedBlock(panel, element, uids[uids.length - 1]);
+  } else {
+    await (above ? Roam.createBlockAbove(element) : Roam.createBlockBelow(element));
+    const input = Roam.getRoamBlockInput();
+    if (input && input.value === "") {
+      await Roam.save(new RoamNode(texts.join("\n")).withCursorAtTheEnd());
+    }
+    await returnToNormalMode();
+  }
+  updateVimView();
+}
+async function pasteBlockBelow() {
+  await pasteRegister({ above: false });
+}
+async function pasteBlockAbove() {
+  await pasteRegister({ above: true });
+}
 async function deleteBlock2() {
   const element = RoamBlock.selected().element;
-  await writeToClipboard(await Roam.getBlockText(element));
+  await yankBlocks([await Roam.getBlockText(element)]);
   await Roam.deleteBlock(element);
+  await returnToNormalMode();
+  updateVimView();
+}
+async function deleteHighlightedBlocks() {
+  const blocks = Array.from(RoamHighlight.highlightedBlocks());
+  if (blocks.length === 0) {
+    debugLog("commands", "visual delete: nothing is highlighted");
+    return;
+  }
+  const texts = blocks.map((block) => {
+    const uid = getBlockUid(block);
+    return uid ? pullBlock(uid)?.string : null;
+  }).filter((text) => typeof text === "string");
+  if (texts.length > 0) {
+    await yankBlocks(texts);
+  }
+  if (!await Roam.deleteBlocks(blocks)) {
+    await Keyboard.pressBackspace();
+  }
   await returnToNormalMode();
   updateVimView();
 }
@@ -2296,10 +2607,13 @@ var LEADER_COMMAND_REGISTRY = {
   "block/yank-ref": copySelectedBlockReference,
   "block/yank-embed": copySelectedBlockEmbed,
   "block/yank-text": copySelectedBlock,
+  "block/paste-below": pasteBlockBelow,
+  "block/paste-above": pasteBlockAbove,
   "block/delete": deleteBlock2,
   "block/move-up": moveBlockUp,
   "block/move-down": moveBlockDown,
   "block/toggle-fold": toggleFold,
+  "block/toggle-fold-all": toggleFoldAll,
   "block/expand-refs": expandReferences,
   "goto/first": selectFirstBlock,
   "goto/last": selectLastBlock,
@@ -2324,10 +2638,13 @@ var DEFAULT_LEADER_CONFIG = {
         y: { name: "yank block ref", command: "block/yank-ref" },
         e: { name: "yank block embed", command: "block/yank-embed" },
         c: { name: "copy block text", command: "block/yank-text" },
+        p: { name: "paste below", command: "block/paste-below" },
+        P: { name: "paste above", command: "block/paste-above" },
         d: { name: "delete block", command: "block/delete" },
         k: { name: "move block up", command: "block/move-up" },
         j: { name: "move block down", command: "block/move-down" },
         z: { name: "toggle fold", command: "block/toggle-fold" },
+        Z: { name: "toggle fold (whole page)", command: "block/toggle-fold-all" },
         r: { name: "expand references", command: "block/expand-refs" }
       }
     },
@@ -2384,7 +2701,7 @@ var PENDING = Symbol("roam-vim-pending-sequence");
 var CONSUME = Symbol("roam-vim-consume");
 var sequenceBuffer = "";
 var sequenceTimeout = null;
-var SEQUENCE_PREFIXES = ["g", "d"];
+var SEQUENCE_PREFIXES = ["g", "d", "y"];
 var leaderConfig = DEFAULT_LEADER_CONFIG;
 var leaderState = {
   active: false,
@@ -2580,6 +2897,7 @@ function matchCommand(sequence, mode, event) {
   const isNormal = mode === Mode.NORMAL;
   const isVisual = mode === Mode.VISUAL;
   const plain = !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
+  const shifted = event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
   if (isHelpPanelOpen()) {
     if (key === "escape" || event.key === "?") {
       return hideHelpPanel;
@@ -2594,6 +2912,8 @@ function matchCommand(sequence, mode, event) {
       return selectBlockDown;
     if (key === "k" && plain)
       return selectBlockUp;
+    if (key === "d" && plain)
+      return deleteHighlightedBlocks;
     return null;
   }
   if (!isNormal) {
@@ -2603,6 +2923,8 @@ function matchCommand(sequence, mode, event) {
     return selectFirstBlock;
   if (sequence === "d d" && !event.shiftKey)
     return deleteBlock2;
+  if (sequence === "y y" && !event.shiftKey)
+    return yankBlock;
   if (SEQUENCE_PREFIXES.some((prefix) => sequence.startsWith(`${prefix} `))) {
     return CONSUME;
   }
@@ -2619,16 +2941,22 @@ function matchCommand(sequence, mode, event) {
     return selectPanelLeft;
   if (key === "l" && plain)
     return selectPanelRight;
-  if (key === "i" && plain)
+  if (key === "i" && (plain || shifted))
     return editBlock;
-  if (key === "a" && plain)
+  if (key === "a" && (plain || shifted))
     return editBlockFromEnd;
   if (key === "o" && event.shiftKey && !event.ctrlKey && !event.altKey)
     return insertBlockBefore;
   if (key === "o" && plain)
     return insertBlockAfter;
+  if (key === "p" && event.shiftKey && !event.ctrlKey && !event.altKey)
+    return pasteBlockAbove;
+  if (key === "p" && plain)
+    return pasteBlockBelow;
   if (key === "v" && event.shiftKey && !event.ctrlKey && !event.altKey)
     return highlightSelectedBlock;
+  if (key === "z" && event.shiftKey && !event.ctrlKey && !event.altKey)
+    return toggleFoldAll;
   if (key === "z" && plain)
     return toggleFold;
   if (key === "c" && plain)
@@ -3134,6 +3462,7 @@ function stopVimMode() {
   hideHelpPanel();
   hideWhichKey();
   resetKeybindingState();
+  clearRegister();
   VimRoamPanel.reset();
   document.getElementById(BLUR_PIXEL_ID)?.remove();
 }

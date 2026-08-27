@@ -5,12 +5,20 @@
  * see `keybindings.js` and `leader-config.js`.
  */
 
-import { Selectors } from './constants.js';
-import { delay, Keyboard, Mouse, repeatAsync } from './utils.js';
-import { Roam, RoamHighlight, copyBlockReference, copyBlockEmbed, writeToClipboard } from './roam.js';
+import { BLOCK_ACTIVATION_TIMEOUT_MS, BLOCK_ID_PREFIX, Selectors } from './constants.js';
+import { delay, Keyboard, Mouse, repeatAsync, waitForSelectorToExist } from './utils.js';
+import {
+    Roam,
+    RoamHighlight,
+    RoamNode,
+    copyBlockReference,
+    copyBlockEmbed,
+    writeToClipboard,
+} from './roam.js';
 import { RoamBlock, VimRoamPanel } from './panel.js';
 import { Mode, getMode } from './mode.js';
-import { getBlockUid, moveBlock, pullBlock } from './roam-api.js';
+import { getBlockUid, getWindowId, moveBlock, pullBlock } from './roam-api.js';
+import { getRegister, setRegister } from './register.js';
 import { debugLog, logError, warnFallback } from './logger.js';
 import { blurEverything, getHint, updateVimView, viewMoreDailyLogIfPossible } from './view.js';
 
@@ -159,10 +167,25 @@ export async function highlightSelectedBlock() {
 }
 
 // ============== Clipboard Commands ==============
+/**
+ * Yank blocks: into the register, which is what `p` reads, and out to the system
+ * clipboard, which is what everything outside Roam reads.
+ *
+ * @param {string[]} texts one per block
+ */
+async function yankBlocks(texts) {
+    setRegister(texts);
+    await writeToClipboard(texts.join('\n'));
+}
+
 export async function copySelectedBlock() {
-    const text = await Roam.getBlockText(RoamBlock.selected().element);
-    await writeToClipboard(text);
+    await yankBlocks([await Roam.getBlockText(RoamBlock.selected().element)]);
     await returnToNormalMode();
+}
+
+/** `yy` — yank the selected block without leaving NORMAL. */
+export async function yankBlock() {
+    await yankBlocks([await Roam.getBlockText(RoamBlock.selected().element)]);
 }
 
 export function copySelectedBlockReference() {
@@ -237,16 +260,129 @@ export async function toggleFold() {
     await RoamBlock.selected().toggleFold();
 }
 
+/**
+ * Fold or unfold the whole page — vim's `zM` and `zR` on a single key — down to
+ * the deepest block and across the Linked References headers.
+ *
+ * Scoped to the focused panel, so `Z` in the sidebar leaves the main page alone.
+ */
+export async function toggleFoldAll() {
+    const panel = VimRoamPanel.selected();
+    // Empty is legitimate: a page can be nothing but linked references, and
+    // those headers are still ours to collapse.
+    const roots = panel.topLevelBlocks();
+    await Roam.toggleFoldAll(roots, panel.element);
+    updateVimView();
+}
+
+// ============== Paste ==============
+/**
+ * Move the selection onto a freshly created block, once Roam has rendered it.
+ *
+ * The wait is the point: `createBlock` resolves when the datastore has the
+ * block, which is a render ahead of the DOM, and `selectBlock` silently does
+ * nothing for an id it cannot find.
+ */
+async function selectRenderedBlock(panel, element, uid) {
+    const windowId = getWindowId(element);
+    if (!windowId || !uid) return;
+
+    const htmlId = `${BLOCK_ID_PREFIX}${windowId}-${uid}`;
+    try {
+        await waitForSelectorToExist(`#${Selectors.escapeHtmlId(htmlId)}`, panel.element, {
+            timeout: BLOCK_ACTIVATION_TIMEOUT_MS,
+        });
+        panel.selectBlock(htmlId);
+    } catch (error) {
+        debugLog('commands', 'paste: new block never rendered, leaving selection put', error);
+    }
+}
+
+/** Shared body of `p` and `P`. */
+async function pasteRegister({ above }) {
+    const texts = getRegister();
+    if (texts.length === 0) {
+        debugLog('commands', 'paste: register is empty');
+        return;
+    }
+
+    const panel = VimRoamPanel.selected();
+    const element = panel.selectedBlock().element;
+    const uids = await Roam.createBlocks(element, texts, { above });
+
+    if (uids.length > 0) {
+        // vim leaves the cursor on the last pasted line.
+        await selectRenderedBlock(panel, element, uids[uids.length - 1]);
+    } else {
+        // No API to create with, so fall back to Roam's own Enter handling —
+        // which only gets us one block, so the yanked blocks arrive joined.
+        await (above ? Roam.createBlockAbove(element) : Roam.createBlockBelow(element));
+        // Enter leaves us editing whatever Roam focused. Writing there is only
+        // safe if it really is a new empty block: `createBlockAbove`'s
+        // Enter-at-start keeps the cursor in the *original* text, and
+        // clobbering that would lose it.
+        const input = Roam.getRoamBlockInput();
+        if (input && input.value === '') {
+            await Roam.save(new RoamNode(texts.join('\n')).withCursorAtTheEnd());
+        }
+        await returnToNormalMode();
+    }
+
+    updateVimView();
+}
+
+export async function pasteBlockBelow() {
+    await pasteRegister({ above: false });
+}
+
+export async function pasteBlockAbove() {
+    await pasteRegister({ above: true });
+}
+
 // ============== Delete Block ==============
 export async function deleteBlock() {
     const element = RoamBlock.selected().element;
 
-    // Yank to the clipboard first, like vim's `dd`. Reading via the datastore
-    // means we no longer have to focus the block (which would flip us into
-    // INSERT mode) just to grab its text.
-    await writeToClipboard(await Roam.getBlockText(element));
+    // Yank first, like vim's `dd`. Reading via the datastore means we no longer
+    // have to focus the block (which would flip us into INSERT mode) just to
+    // grab its text.
+    await yankBlocks([await Roam.getBlockText(element)]);
 
     await Roam.deleteBlock(element);
+    await returnToNormalMode();
+    updateVimView();
+}
+
+/**
+ * `d` in VISUAL mode — delete every block in the blue selection, yanking them
+ * first so `p` can put them back.
+ *
+ * Texts are read straight from the datastore and skipped if that fails, rather
+ * than falling back to `getBlockText`: activating a block to read it would clear
+ * the very selection we are about to delete.
+ */
+export async function deleteHighlightedBlocks() {
+    const blocks = Array.from(RoamHighlight.highlightedBlocks());
+    if (blocks.length === 0) {
+        debugLog('commands', 'visual delete: nothing is highlighted');
+        return;
+    }
+
+    const texts = blocks
+        .map(block => {
+            const uid = getBlockUid(block);
+            return uid ? pullBlock(uid)?.string : null;
+        })
+        .filter(text => typeof text === 'string');
+    if (texts.length > 0) {
+        await yankBlocks(texts);
+    }
+
+    if (!(await Roam.deleteBlocks(blocks))) {
+        // Backspace is what Roam itself does with a blue selection.
+        await Keyboard.pressBackspace();
+    }
+
     await returnToNormalMode();
     updateVimView();
 }

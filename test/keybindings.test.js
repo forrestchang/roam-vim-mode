@@ -20,6 +20,7 @@ const {
     selectBlockDown,
     selectBlockUp,
     deleteBlock,
+    deleteHighlightedBlocks,
     editBlock,
     editBlockFromEnd,
     insertBlockAfter,
@@ -79,9 +80,16 @@ test('handleKeydown accumulates a sequence across two key presses', () => {
     clearSequence();
 });
 
-test('Shift+A does not trigger the `a` binding', () => {
+test('`I` and `A` reach the same commands as `i` and `a`', () => {
+    // vim separates them by where in the line the cursor lands, which a
+    // whole-block selection has no room for.
     assert.equal(match('a', 'a'), editBlockFromEnd);
-    assert.equal(match('a', 'A', { shiftKey: true }), null);
+    assert.equal(match('a', 'A', { shiftKey: true }), editBlockFromEnd);
+    assert.equal(match('i', 'i'), editBlock);
+    assert.equal(match('i', 'I', { shiftKey: true }), editBlock);
+
+    // Ctrl+A stays with Roam — it is not an insert-mode key.
+    assert.equal(match('ctrl+a', 'a', { ctrlKey: true }), null);
 });
 
 test('shifted bindings are distinct from their unshifted counterparts', () => {
@@ -111,12 +119,15 @@ test('hint keys resolve to a click, and Ctrl+R is not treated as a hint', () => 
     assert.equal(match('ctrl+r', 'r', { ctrlKey: true }), redo);
 });
 
-test('VISUAL mode only grows the selection', () => {
+test('VISUAL mode grows the selection and deletes it', () => {
     assert.equal(match('j', 'j', {}, Mode.VISUAL), selectBlockDown);
     assert.equal(match('k', 'k', {}, Mode.VISUAL), selectBlockUp);
-    // Editing bindings must not fire while a block selection is active.
+    // One `d`, not `dd` — the selection already says what to delete.
+    assert.equal(match('d', 'd', {}, Mode.VISUAL), deleteHighlightedBlocks);
+    assert.notEqual(deleteHighlightedBlocks, deleteBlock);
+    // Other editing bindings stay out of the way while blocks are selected.
     assert.equal(match('i', 'i', {}, Mode.VISUAL), null);
-    assert.equal(match('d d', 'd', {}, Mode.VISUAL), null);
+    assert.equal(match('p', 'p', {}, Mode.VISUAL), null);
 });
 
 test('unknown keys are left for Roam to handle', () => {

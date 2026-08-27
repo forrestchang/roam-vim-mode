@@ -13,6 +13,7 @@ import { debugLog, diagnose, installConsoleApi, removeConsoleApi } from './logge
 import { updateVimView, clearVimView } from './view.js';
 import { hidePageHints } from './page-hints.js';
 import { handleKeydown, resetKeybindingState } from './keybindings.js';
+import { clearRegister } from './register.js';
 import { VIM_MODE_STYLES } from './styles.js';
 import { createModeIndicator, removeModeIndicator } from './mode-indicator.js';
 import { hideHelpPanel } from './help-panel.js';
@@ -108,6 +109,7 @@ function stopVimMode() {
     hideHelpPanel();
     hideWhichKey();
     resetKeybindingState();
+    clearRegister();
     VimRoamPanel.reset();
 
     document.getElementById(BLUR_PIXEL_ID)?.remove();

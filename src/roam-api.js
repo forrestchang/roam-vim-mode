@@ -104,6 +104,47 @@ export function pullBlock(uid) {
     }
 }
 
+// `...` is datascript's recursion marker: follow `:block/children` all the way
+// down rather than one level.
+const TREE_PULL_PATTERN = '[:block/uid :block/open {:block/children ...}]';
+
+/**
+ * Pull `uid` and every block beneath it, flattened into a list.
+ *
+ * Folding a whole page can't be driven from the DOM: a collapsed block renders
+ * none of its descendants, so the rendered tree only ever shows the part that is
+ * already expanded.
+ *
+ * @returns {{uid: string, open: boolean, hasChildren: boolean}[]}
+ */
+export function pullBlockTree(uid) {
+    const api = getRoamAlphaAPI();
+    if (!api?.pull || !uid) return [];
+
+    let root;
+    try {
+        root = api.pull(TREE_PULL_PATTERN, [':block/uid', uid]);
+    } catch (error) {
+        console.warn('[Roam Vim Mode] recursive pull failed for block', uid, error);
+        return [];
+    }
+
+    const blocks = [];
+    const visit = node => {
+        if (!node?.[':block/uid']) return;
+        const raw = node[':block/children'];
+        const children = Array.isArray(raw) ? raw : raw ? [raw] : [];
+        blocks.push({
+            uid: node[':block/uid'],
+            open: node[':block/open'] !== false,
+            hasChildren: children.length > 0,
+        });
+        children.forEach(visit);
+    };
+    visit(root);
+    return blocks;
+}
+
 export function getFocusedBlock() {
     const api = getRoamAlphaAPI();
     const focused = api?.ui?.getFocusedBlock?.();

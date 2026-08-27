@@ -41,7 +41,12 @@ import {
     clickHint,
     shiftClickHint,
     toggleFold,
+    toggleFoldAll,
     deleteBlock,
+    deleteHighlightedBlocks,
+    yankBlock,
+    pasteBlockAbove,
+    pasteBlockBelow,
 } from './commands.js';
 
 // ============== Match Results ==============
@@ -57,7 +62,7 @@ let sequenceTimeout = null;
 
 // Keys that start multi-key sequences: pressing one waits for the next key
 // rather than firing a single-key command.
-const SEQUENCE_PREFIXES = ['g', 'd'];
+const SEQUENCE_PREFIXES = ['g', 'd', 'y'];
 
 // ============== Leader Key State ==============
 let leaderConfig = DEFAULT_LEADER_CONFIG;
@@ -348,6 +353,7 @@ export function matchCommand(sequence, mode, event) {
     const isNormal = mode === Mode.NORMAL;
     const isVisual = mode === Mode.VISUAL;
     const plain = !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
+    const shifted = event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
 
     // The help panel is modal: only `?` and Escape get through.
     if (isHelpPanelOpen()) {
@@ -365,6 +371,8 @@ export function matchCommand(sequence, mode, event) {
     if (isVisual) {
         if (key === 'j' && plain) return selectBlockDown;
         if (key === 'k' && plain) return selectBlockUp;
+        // A single `d`, not `dd`: the selection already says what to delete.
+        if (key === 'd' && plain) return deleteHighlightedBlocks;
         return null;
     }
 
@@ -375,6 +383,7 @@ export function matchCommand(sequence, mode, event) {
     // --- Multi-key sequences, checked before any single-key binding.
     if (sequence === 'g g' && !event.shiftKey) return selectFirstBlock;
     if (sequence === 'd d' && !event.shiftKey) return deleteBlock;
+    if (sequence === 'y y' && !event.shiftKey) return yankBlock;
 
     // Mid-sequence but no match: swallow the key and reset rather than firing
     // the second key's own binding.
@@ -397,15 +406,24 @@ export function matchCommand(sequence, mode, event) {
     if (key === 'l' && plain) return selectPanelRight;
 
     // --- Insert mode
-    if (key === 'i' && plain) return editBlock;
-    if (key === 'a' && plain) return editBlockFromEnd;
+    // `I` and `A` land on the same commands as `i` and `a`. In vim they differ
+    // by where the cursor starts — after the character vs. at the end of the
+    // line — but a block is selected as a whole here, with no in-block cursor to
+    // sit after, so the distinction has nowhere to land.
+    if (key === 'i' && (plain || shifted)) return editBlock;
+    if (key === 'a' && (plain || shifted)) return editBlockFromEnd;
     if (key === 'o' && event.shiftKey && !event.ctrlKey && !event.altKey) return insertBlockBefore;
     if (key === 'o' && plain) return insertBlockAfter;
+
+    // --- Paste (from the extension's own register, not the system clipboard)
+    if (key === 'p' && event.shiftKey && !event.ctrlKey && !event.altKey) return pasteBlockAbove;
+    if (key === 'p' && plain) return pasteBlockBelow;
 
     // --- Visual mode (line level)
     if (key === 'v' && event.shiftKey && !event.ctrlKey && !event.altKey) return highlightSelectedBlock;
 
     // --- View
+    if (key === 'z' && event.shiftKey && !event.ctrlKey && !event.altKey) return toggleFoldAll;
     if (key === 'z' && plain) return toggleFold;
     if (key === 'c' && plain) return centerCurrentBlock;
 

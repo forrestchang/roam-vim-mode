@@ -27,16 +27,26 @@ A Roam Research extension that provides Vim-like keyboard navigation for blocks.
 
 | Key | Description |
 |-----|-------------|
-| `i` | Enter insert mode (start) |
-| `a` | Enter insert mode (end) |
+| `i` / `I` | Enter insert mode (start of block) |
+| `a` / `A` | Enter insert mode (end of block) |
 | `o` | Insert block below |
 | `O` | Insert block above |
 | `V` | Enter visual mode (line) |
-| `dd` | Delete block |
+| `d` | Delete the selected blocks (visual mode; yanks them first) |
+| `dd` | Delete block (yanks it first) |
+| `yy` | Yank block |
+| `p` / `P` | Paste yanked block below / above |
 | `u` | Undo |
 | `Ctrl+R` | Redo |
 | `z` | Toggle fold |
+| `Z` | Toggle fold for the whole page (incl. linked references) |
 | `c` | Center current block |
+
+`yy` and `dd` yank into vim's unnamed register, and `p` / `P` paste from it. The
+register is the extension's own, not the system clipboard: reading the clipboard
+back needs the browser's clipboard-read permission, which would put a prompt in
+front of every paste. Yanks still *write* to the system clipboard, so the text
+stays available to other apps — but text copied elsewhere is not what `p` pastes.
 
 ### Search
 
@@ -82,8 +92,10 @@ in Normal mode to open the which-key popup, then walk the tree.
 |----------|-------------|
 | `SPC b y` / `SPC b e` | Copy block reference / embed |
 | `SPC b c` / `SPC b d` | Copy block text / delete block |
+| `SPC b p` / `SPC b P` | Paste below / above |
 | `SPC b k` / `SPC b j` | Move block up / down |
-| `SPC b z` / `SPC b r` | Toggle fold / expand references |
+| `SPC b z` / `SPC b Z` | Toggle fold for block / whole page |
+| `SPC b r` | Expand references |
 | `SPC g g` / `SPC g e` / `SPC g c` | First block / last block / center |
 | `SPC p h` / `SPC p l` / `SPC p c` | Left panel / right panel / close sidebar page |
 | `SPC s s` / `SPC s n` / `SPC s p` | Search / next match / previous match |
