@@ -6,7 +6,7 @@
  * simulated clicks / key events when it is not.
  */
 
-import { Selectors, BLOCK_ACTIVATION_TIMEOUT_MS } from './constants.js';
+import { Selectors, BLOCK_ACTIVATION_TIMEOUT_MS, MAX_FOLD_ALL_CLICKS } from './constants.js';
 import { debugLog, warnFallback } from './logger.js';
 import {
     delay,
@@ -26,6 +26,7 @@ import {
     getWindowId,
     isApiAvailable,
     pullBlock,
+    pullBlockTree,
     redo as apiRedo,
     undo as apiUndo,
     updateBlock as apiUpdateBlock,
@@ -77,6 +78,93 @@ export function nearestFoldButton(element) {
         current = current.parentElement;
     }
     return null;
+}
+
+/**
+ * Where a new block goes relative to `block`.
+ *
+ * Below mirrors Roam's own Enter-at-end rule: a block that has children and is
+ * expanded gets a new *first child*, anything else gets a sibling directly
+ * below. Above is always a sibling — there is no "above" inside a children list
+ * — and inserting at the current order pushes this block, and the rest, down.
+ *
+ * @returns {{parentUid: string|null, order: number}}
+ */
+function insertionPoint(block, { above }) {
+    if (above) {
+        return { parentUid: block.parentUid, order: block.order };
+    }
+    return block.open && block.childCount > 0
+        ? { parentUid: block.uid, order: 0 }
+        : { parentUid: block.parentUid, order: block.order + 1 };
+}
+
+/**
+ * The collapse carets on the Linked References page headers.
+ *
+ * Anchored on the title rather than on an ancestor section: the header is
+ * `.rm-title-arrow-wrapper > [caret, .rm-ref-page-view-title]`, so walking up
+ * from the title is both exact and safe — it can never match the caret that
+ * would collapse the page the user is actually reading.
+ *
+ * @returns {Element[]}
+ */
+function referenceHeaderCarets(panelElement) {
+    return Array.from(panelElement.querySelectorAll(Selectors.pageReferenceTitle))
+        .map(title => title.parentElement?.querySelector(Selectors.foldButton))
+        .filter(Boolean);
+}
+
+/**
+ * Click carets until `nextCaret` stops producing them.
+ *
+ * Asking again every iteration is the point: each click re-renders the subtree,
+ * so a list captured up front goes stale — folding drops descendants, unfolding
+ * reveals more folded blocks below.
+ *
+ * @param {() => Element|undefined} nextCaret
+ * @returns {Promise<number>} how many carets were clicked
+ */
+async function clickCaretsUntilDone(nextCaret) {
+    let clicks = 0;
+    while (clicks < MAX_FOLD_ALL_CLICKS) {
+        const caret = nextCaret();
+        if (!caret) break;
+        await Mouse.hover(caret);
+        await Mouse.leftClick(caret);
+        clicks++;
+    }
+    return clicks;
+}
+
+/** The caret state that disagrees with where we're trying to end up. */
+function caretsFacingTheWrongWay(open) {
+    return open ? Selectors.foldButtonClosed : Selectors.foldButtonOpen;
+}
+
+/**
+ * Which way a page-wide fold should go, judged from the top level only.
+ *
+ * Deciding from every block instead would make `Z` on an already-collapsed page
+ * a no-op on screen, because it would spend the press collapsing descendants
+ * nobody can see.
+ *
+ * @param {Element[]} rootBlocks outermost rendered blocks of a panel
+ * @param {Element} panelElement scope for the caret fallback
+ */
+function anyRootExpanded(rootBlocks, panelElement) {
+    const pulled = rootBlocks
+        .map(element => {
+            const uid = getBlockUid(element);
+            return uid ? pullBlock(uid) : null;
+        })
+        .filter(Boolean);
+
+    if (pulled.length > 0) {
+        return pulled.some(block => block.open && block.childCount > 0);
+    }
+    // No datastore to ask: an open caret on screen means something is expanded.
+    return !!panelElement?.querySelector(Selectors.foldButtonOpen);
 }
 
 // ============== Roam API Wrapper ==============
@@ -241,13 +329,11 @@ export const Roam = {
             debugLog('roam', 'createBlockBelow: resolved block', { uid, block });
 
             if (block) {
-                const nestIntoChildren = block.open && block.childCount > 0;
-                const parentUid = nestIntoChildren ? block.uid : block.parentUid;
-                const order = nestIntoChildren ? 0 : block.order + 1;
+                const { parentUid, order } = insertionPoint(block, { above: false });
 
                 if (parentUid) {
                     const newUid = await apiCreateBlock({ parentUid, order });
-                    debugLog('roam', 'createBlockBelow: created via API', { newUid, parentUid, order, nestIntoChildren });
+                    debugLog('roam', 'createBlockBelow: created via API', { newUid, parentUid, order });
                     if (newUid) {
                         await focusBlock({ uid: newUid, windowId: getWindowId(element) });
                         return newUid;
@@ -279,11 +365,8 @@ export const Roam = {
             debugLog('roam', 'createBlockAbove: resolved block', { uid, block });
 
             if (block?.parentUid) {
-                // Inserting at the current order pushes this block (and the rest) down.
-                const newUid = await apiCreateBlock({
-                    parentUid: block.parentUid,
-                    order: block.order,
-                });
+                const { parentUid, order } = insertionPoint(block, { above: true });
+                const newUid = await apiCreateBlock({ parentUid, order });
                 if (newUid) {
                     await focusBlock({ uid: newUid, windowId: getWindowId(element) });
                     return newUid;
@@ -298,6 +381,65 @@ export const Roam = {
         await this.activateBlock(element, { start: 0 });
         await Keyboard.pressEnter();
         return null;
+    },
+
+    /**
+     * Create a run of blocks around `element`, one per string, in order (`p`).
+     *
+     * Unlike `createBlockBelow`, nothing is focused and nothing falls back to
+     * simulated keys: paste stays in NORMAL, and the Enter fallback cannot
+     * reliably chain across several blocks.
+     *
+     * @param {string[]} strings
+     * @returns {Promise<string[]>} the uids created, newest last; empty on failure
+     */
+    async createBlocks(element, strings, { above = false } = {}) {
+        const created = [];
+        try {
+            const uid = getBlockUid(element);
+            const block = uid ? pullBlock(uid) : null;
+            if (block) {
+                const { parentUid, order } = insertionPoint(block, { above });
+                if (parentUid) {
+                    for (const [index, string] of strings.entries()) {
+                        const newUid = await apiCreateBlock({
+                            parentUid,
+                            order: order + index,
+                            string,
+                        });
+                        if (!newUid) break;
+                        created.push(newUid);
+                    }
+                }
+            }
+        } catch (error) {
+            warnFallback('createBlocks via roamAlphaAPI failed', error);
+        }
+        debugLog('roam', 'createBlocks', { wanted: strings.length, created: created.length, above });
+        return created;
+    },
+
+    /**
+     * Delete several blocks at once (VISUAL `d`).
+     *
+     * A selection can hold both a parent and its children; deleting the parent
+     * takes the children with it, so the later uid is simply gone by the time we
+     * reach it. Each delete is contained so one such miss can't strand the rest.
+     *
+     * @returns {Promise<boolean>} whether anything was deleted through the API
+     */
+    async deleteBlocks(elements) {
+        const uids = elements.map(getBlockUid).filter(Boolean);
+        let deleted = 0;
+        for (const uid of uids) {
+            try {
+                if (await apiDeleteBlock(uid)) deleted++;
+            } catch (error) {
+                warnFallback(`deleteBlock via roamAlphaAPI failed for ${uid}`, error);
+            }
+        }
+        debugLog('roam', 'deleteBlocks', { selected: elements.length, deleted });
+        return deleted > 0;
     },
 
     async toggleFoldBlock(block) {
@@ -319,6 +461,87 @@ export const Roam = {
         await Mouse.hover(foldButton);
         await Mouse.leftClick(foldButton);
         return true;
+    },
+
+    /**
+     * Fold or unfold a whole page at once (vim's `zM` / `zR`), including the
+     * per-page headers in Linked References.
+     *
+     * @param {Element[]} rootBlocks the panel's outermost rendered blocks
+     * @param {Element} panelElement the panel, used to scope the caret clicks
+     * @returns {Promise<boolean>} whether anything was folded or unfolded
+     */
+    async toggleFoldAll(rootBlocks, panelElement) {
+        const open = !anyRootExpanded(rootBlocks, panelElement);
+        const uids = rootBlocks.map(getBlockUid).filter(Boolean);
+        debugLog('roam', 'toggleFoldAll', { roots: uids.length, open });
+
+        const foldedBlocks =
+            (await this.setFoldStateDeep(uids, open)) ||
+            (await this.clickFoldButtonsUntilDone(panelElement, open)) > 0;
+
+        // Reference headers get clicked either way: they are React view state,
+        // not blocks, so there is no `:block/open` to write and no API for them.
+        const foldedHeaders = await this.toggleReferenceHeaders(panelElement, open);
+
+        return foldedBlocks || foldedHeaders > 0;
+    },
+
+    /**
+     * Collapse or expand the page groups in Linked References.
+     * @returns {Promise<number>} how many headers were toggled
+     */
+    async toggleReferenceHeaders(panelElement, open) {
+        if (!panelElement) return 0;
+        const wrongWay = caretsFacingTheWrongWay(open);
+        const clicks = await clickCaretsUntilDone(() =>
+            referenceHeaderCarets(panelElement).find(caret => caret.matches?.(wrongWay))
+        );
+        debugLog('roam', 'toggleReferenceHeaders', { open, clicks });
+        return clicks;
+    },
+
+    /**
+     * Set `:block/open` on `rootUids` and all of their descendants.
+     * @returns {Promise<boolean>} whether the datastore path handled it
+     */
+    async setFoldStateDeep(rootUids, open) {
+        try {
+            const blocks = rootUids.flatMap(uid => pullBlockTree(uid));
+            if (blocks.length === 0) {
+                return false;
+            }
+            // Leaves have no caret and nothing to collapse; skipping them keeps a
+            // fold-all on a big page down to the transactions that matter.
+            const stale = blocks.filter(block => block.hasChildren && block.open !== open);
+            await Promise.all(stale.map(({ uid }) => apiUpdateBlock({ uid, open })));
+            debugLog('roam', 'setFoldStateDeep via API', { open, updated: stale.length });
+            return true;
+        } catch (error) {
+            warnFallback('setFoldStateDeep via roamAlphaAPI failed', error);
+            return false;
+        }
+    },
+
+    /**
+     * Fallback fold-all: click block carets one at a time until none are left
+     * facing the wrong way.
+     *
+     * Reference blocks are skipped — they belong to other pages, and unlike the
+     * headers above them, collapsing one is a real edit to someone else's page.
+     *
+     * @returns {Promise<number>} how many blocks were toggled
+     */
+    async clickFoldButtonsUntilDone(panelElement, open) {
+        if (!panelElement) return 0;
+        const wrongWay = caretsFacingTheWrongWay(open);
+        const clicks = await clickCaretsUntilDone(() =>
+            Array.from(panelElement.querySelectorAll(wrongWay)).find(
+                caret => !caret.closest?.(Selectors.referencesRegion)
+            )
+        );
+        debugLog('roam', 'toggleFoldAll via carets', { open, clicks });
+        return clicks;
     },
 
     async undo() {

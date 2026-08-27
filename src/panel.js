@@ -163,6 +163,33 @@ export class VimRoamPanel {
         return blocks[blocks.length - 1];
     }
 
+    /**
+     * The outermost blocks rendered in this panel: a page's own top-level blocks,
+     * or the children of whatever block the panel is zoomed into.
+     *
+     * The entry point for anything that works on the page as a whole — the rest
+     * of each tree is reachable from these through the datastore, including the
+     * parts a collapsed block keeps out of the DOM.
+     *
+     * Blocks under linked references belong to other pages, so they're excluded.
+     *
+     * @returns {Element[]}
+     */
+    topLevelBlocks() {
+        const containers = Array.from(this.element.querySelectorAll(Selectors.blockContainer))
+            .filter(container => !container.closest(Selectors.referencesRegion));
+        const containerSet = new Set(containers);
+
+        return containers
+            .filter(container =>
+                !containerSet.has(container.parentElement?.closest(Selectors.blockContainer))
+            )
+            // A container's own block is its first block descendant; anything
+            // after that belongs to a child container.
+            .map(container => container.querySelector(`${Selectors.block}, ${Selectors.blockInput}`))
+            .filter(Boolean);
+    }
+
     select() {
         const index = panelState.panelOrder.indexOf(this.element);
         if (index === -1) {

@@ -42,6 +42,10 @@ export const Selectors = {
     leftPanel: '.roam-sidebar-container',
     topBar: '.rm-topbar',
     foldButton: '.rm-caret',
+    // Roam marks each caret with its state; blocks without children get
+    // `.rm-caret-hidden`, which must never be clicked.
+    foldButtonOpen: '.rm-caret-open',
+    foldButtonClosed: '.rm-caret-closed',
     highlight: '.block-highlight-blue',
     button: '.bp3-button',
     closeButton: '.bp3-icon-cross',
@@ -57,6 +61,17 @@ export const Selectors = {
     breadcrumbsContainer: '.zoom-mentions-view',
     pageReferenceItem: '.rm-ref-page-view',
     pageReferenceLink: '.rm-ref-page-view-title a span',
+    // The per-page header inside Linked References / Mentions. Its collapse
+    // caret is a sibling of the title, under a `.rm-title-arrow-wrapper`.
+    pageReferenceTitle: '.rm-ref-page-view-title',
+    /**
+     * Everything under Linked References / Mentions.
+     *
+     * Blocks rendered here belong to other pages, so page-wide commands must
+     * leave their `:block/open` alone — collapsing them would silently reshape
+     * a page the user isn't even looking at.
+     */
+    referencesRegion: '.rm-reference-item, .rm-ref-page-view, .zoom-mentions-view',
     filterButton: '.bp3-icon.bp3-icon-filter',
     commandBar: '.bp3-omnibar',
     // CodeMirror 5 (`.CodeMirror`) and 6 (`.cm-editor`) roots. Roam renders code
@@ -113,6 +128,11 @@ export const SEQUENCE_TIMEOUT_MS = 500;
 export const BLOCK_ACTIVATION_TIMEOUT_MS = 1000;
 /** Upper bound on search matches, to keep highlighting responsive on big pages. */
 export const SEARCH_MAX_MATCHES = 500;
+/**
+ * Upper bound on caret clicks when folding a whole page without the Roam API.
+ * Only a backstop — the loop normally stops when no caret is left to click.
+ */
+export const MAX_FOLD_ALL_CLICKS = 500;
 
 // ============== Which-key configuration ==============
 export const WHICH_KEY_PANEL_ID = `${EXTENSION_ID}--which-key`;
